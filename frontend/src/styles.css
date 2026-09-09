@@ -1114,6 +1114,11 @@ a      { text-decoration: none; color: inherit; }
 .recipe-add-all-btn:hover{background:#00b876}
 .recipe-products-grid{display:flex;flex-direction:column;gap:7px}
 .recipe-product-chip{display:flex;align-items:center;gap:9px;background:rgba(255,255,255,.07);border-radius:10px;padding:7px 9px}
+.ingredient-check{width:22px;height:22px;flex-shrink:0;border:1px solid rgba(255,255,255,.45);border-radius:6px;color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center}
+.ingredient-check.selected,.ingredient-check.owned{background:#00d48d;border-color:#00d48d}
+.ingredient-have-btn{width:100%;margin-left:31px;color:rgba(255,255,255,.55);font-size:9px;text-align:left}
+.ingredient-have-btn:hover{color:#fff}
+.rpc-owned{color:#ffcf70;font-size:10px;font-weight:700;white-space:nowrap}
 .rpc-img-wrap{width:40px;height:40px;border-radius:8px;overflow:hidden;background:rgba(255,255,255,.1);flex-shrink:0;display:flex;align-items:center;justify-content:center}
 .rpc-img{width:100%;height:100%;object-fit:contain;padding:3px}
 .rpc-info{flex:1;min-width:0}
@@ -1125,6 +1130,19 @@ a      { text-decoration: none; color: inherit; }
 .rpc-add:hover{background:#6a1fd0}
 .rpc-in-cart{background:#00d48d;color:#fff;font-size:10px;font-weight:700;border-radius:7px;padding:3px 8px}
 .recipe-not-available{font-size:10px;color:rgba(255,255,255,.4);margin-top:8px;line-height:1.5;font-style:italic}
+.recipe-confirm-overlay{position:fixed;inset:0;z-index:1000;display:flex;align-items:flex-end;justify-content:center;padding:20px}
+.recipe-confirm-backdrop{position:absolute;inset:0;background:rgba(12,8,20,.58);backdrop-filter:blur(3px)}
+.recipe-confirm-sheet{position:relative;width:min(100%,460px);padding:22px;border-radius:20px 20px 14px 14px;background:#fff;color:var(--tx);box-shadow:0 18px 60px rgba(0,0,0,.25)}
+.recipe-confirm-kicker{color:var(--pk);font-size:9px;font-weight:800;letter-spacing:.12em}
+.recipe-confirm-sheet h2{margin:6px 0 3px;font-size:21px}
+.recipe-confirm-sheet p{color:var(--mu);font-size:12px}
+.recipe-confirm-list{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:16px 0;color:#3f4851;font-size:11px}
+.recipe-confirm-primary{width:100%;padding:12px;border-radius:10px;background:var(--pk);color:#fff;font-size:12px;font-weight:800}
+.recipe-suggestion-list{display:flex;flex-direction:column;gap:7px;margin-top:12px}
+.recipe-suggestion-kicker{color:#00d48d;font-size:9px;font-weight:800;letter-spacing:.1em}
+.recipe-suggestion-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border-radius:10px;background:rgba(255,255,255,.08);color:#fff;text-align:left}
+.recipe-suggestion-row strong,.recipe-suggestion-row small{display:block}
+.recipe-suggestion-row strong{font-size:12px}.recipe-suggestion-row small{margin-top:3px;color:rgba(255,255,255,.55);font-size:10px}
 
 /* ============================================================
    FULL RESPONSIVE SYSTEM
@@ -1716,4 +1734,7 @@ html, body, #root { width: 100%; min-width: 0; }
   .hero-stats { margin-top: 9px; padding-top: 8px; gap: 9px; }
   .search-cook-bridge { align-items:stretch; flex-direction:column; margin-left:10px; margin-right:10px; }
   .search-cook-bridge button { width:100%; }
+  .recipe-confirm-overlay{padding:10px}
+  .recipe-confirm-sheet{padding:18px 15px}
+  .recipe-confirm-list{grid-template-columns:1fr}
 }

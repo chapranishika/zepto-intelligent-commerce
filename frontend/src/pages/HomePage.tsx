@@ -10,6 +10,7 @@ import {
   FRESH_IDS, KITCHEN_HH_IDS, getById,
 } from "../lib/products";
 import { useCartStore, useUIStore } from "../store";
+import { RECIPES } from "../lib/recipes";
 
 const HERO  = "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=900&q=80";
 const GOPI  = "/gopi_assistant.png";
@@ -31,6 +32,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   "Snacks & Munchies": "Snacks",
   "Zepto Cafe": "Cafe",
 };
+
+const FEATURED_RECIPES = ["paneer_butter_masala", "paneer_tikka", "dal_tadka"];
 
 export default function HomePage() {
   const navigate   = useNavigate();
@@ -149,6 +152,38 @@ export default function HomePage() {
               Ask Gopi Bahu <span aria-hidden="true">→</span>
             </button>
           </form>
+        </section>
+
+        <section className="recipe-discovery" aria-labelledby="recipe-discovery-title">
+          <div className="recipe-section-head">
+            <div>
+              <span className="intent-kicker">POPULAR TODAY</span>
+              <h2 id="recipe-discovery-title">Start with a dish</h2>
+            </div>
+            <button onClick={() => navigate("/cook")} className="text-action">See all recipes →</button>
+          </div>
+          <div className="recipe-discovery-grid">
+            {FEATURED_RECIPES.map((key) => {
+              const recipe = RECIPES[key];
+              if (!recipe) return null;
+              const image = getById(recipe.product_ids[0])?.src;
+              return (
+                <article key={key} className="recipe-discovery-card" onClick={() => navigate(`/cook?query=${encodeURIComponent(recipe.title)}`)}>
+                  <div className="recipe-discovery-image">
+                    {image && <img src={image} alt="" loading="lazy" />}
+                    <span>{recipe.category}</span>
+                  </div>
+                  <div className="recipe-discovery-body">
+                    <h3>{recipe.title}</h3>
+                    <p>{recipe.time} · Easy · ★ 4.8</p>
+                    <button onClick={(event) => { event.stopPropagation(); navigate(`/cook?query=${encodeURIComponent(recipe.title)}`); }}>
+                      Add ingredients
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         </section>
 
         {/* ── Promo banners with real photos ── */}

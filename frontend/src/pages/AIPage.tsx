@@ -19,6 +19,7 @@ type Msg = {
   allIngredients?: string[];
   isRecipe?: boolean;
   category?: string;
+  recipeSuggestions?: Array<{ key: string; title: string; time: string; missing: number }>;
 };
 
 // ── Smart keyword matcher ─────────────────────────────────────────────────────
@@ -93,6 +94,20 @@ function findRecipe(query: string): { key: string; recipe: (typeof RECIPES)[stri
   return null;
 }
 
+function findIngredientRecipes(query: string) {
+  const words = query.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((word) => word.length > 3);
+  if (words.length < 2) return [];
+  return Object.entries(RECIPES)
+    .map(([key, recipe]) => {
+      const ingredientText = recipe.all_ingredients.join(" ").toLowerCase();
+      const overlap = words.filter((word) => ingredientText.includes(word.replace(/s$/, ""))).length;
+      return { key, title: recipe.title, time: recipe.time, missing: Math.max(0, recipe.all_ingredients.length - overlap), overlap };
+    })
+    .filter((match) => match.overlap >= 2)
+    .sort((a, b) => b.overlap - a.overlap || a.missing - b.missing)
+    .slice(0, 3);
+}
+
 // ── Static non-recipe responses ───────────────────────────────────────────────
 const STATIC: Record<string, { text: string; product_ids?: number[] }> = {
   return: {
@@ -162,6 +177,8 @@ export default function AIPage() {
   const [input, setInput]     = useState("");
   const [loading, setLoading] = useState(false);
   const [confirmingMessageId, setConfirmingMessageId] = useState<string | null>(null);
+  const [selectedByMessage, setSelectedByMessage] = useState<Record<string, number[]>>({});
+  const [haveByMessage, setHaveByMessage] = useState<Record<string, number[]>>({});
   const [totalRecipes]        = useState(Object.keys(RECIPES).length);
   const initialQuery = searchParams.get("query")?.trim() ?? "";
   const initialQuerySent = useRef(false);
@@ -180,9 +197,43 @@ export default function AIPage() {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 60);
   }
 
+  function selectedProducts(message: Msg) {
+    const selected = selectedByMessage[message.id] ?? message.products?.map((product) => product.id) ?? [];
+    const have = new Set(haveByMessage[message.id] ?? []);
+    return (message.products ?? []).filter((product) => selected.includes(product.id) && !have.has(product.id));
+  }
+
+  function toggleIngredient(messageId: string, productId: number) {
+    setSelectedByMessage((current) => {
+      const selected = new Set(current[messageId] ?? []);
+      if (selected.has(productId)) selected.delete(productId);
+      else selected.add(productId);
+      return { ...current, [messageId]: [...selected] };
+    });
+  }
+
+  function markAlreadyHave(messageId: string, productId: number) {
+    setHaveByMessage((current) => {
+      const have = new Set(current[messageId] ?? []);
+      if (have.has(productId)) have.delete(productId);
+      else have.add(productId);
+      return { ...current, [messageId]: [...have] };
+    });
+    setSelectedByMessage((current) => {
+      const selected = new Set(current[messageId] ?? []);
+      selected.delete(productId);
+      return { ...current, [messageId]: [...selected] };
+    });
+  }
+
   function addAllToCart(products: Product[]) {
-    products.forEach(p => addItem(p));
-    addToast(`${products.length} ingredients added to cart 🛒`);
+    const cartIds = new Set(items.map((entry) => entry.product.id));
+    const newProducts = products.filter((product) => !cartIds.has(product.id));
+    newProducts.forEach((product) => addItem(product));
+    const skipped = products.length - newProducts.length;
+    addToast(skipped > 0
+      ? `${newProducts.length} added · ${skipped} already in your cart`
+      : `${newProducts.length} ingredients added to cart 🛒`);
   }
 
   async function sendMessage(text: string) {
@@ -200,9 +251,12 @@ export default function AIPage() {
     let allIngredients: string[] | undefined;
     let isRecipe = false;
     let category = "";
+    let recipeSuggestions: Msg["recipeSuggestions"];
 
     const q = text.toLowerCase();
-    const recipeMatch = findRecipe(q);
+    const reverseIntent = /\b(have|already have|with what|at home)\b/.test(q);
+    const recipeMatch = reverseIntent ? null : findRecipe(q);
+    const ingredientMatches = !recipeMatch ? findIngredientRecipes(q) : [];
 
     if (recipeMatch) {
       const { recipe } = recipeMatch;
@@ -222,6 +276,11 @@ export default function AIPage() {
       allIngredients = recipe.all_ingredients;
       isRecipe      = true;
       category      = recipe.category;
+      setSelectedByMessage((current) => ({ ...current, [asstId]: matched.map((product) => product.id) }));
+      setHaveByMessage((current) => ({ ...current, [asstId]: [] }));
+    } else if (ingredientMatches.length > 0) {
+      responseText = `You can make these with what you have:\n\n` + ingredientMatches.map((match, index) => `${index + 1}. **${match.title}** — ${match.time} · ${match.missing} ingredients to check`).join("\n");
+      recipeSuggestions = ingredientMatches;
     } else {
       const key = q.includes("protein") || q.includes("gym") || q.includes("workout")
         ? "protein"
@@ -245,7 +304,7 @@ export default function AIPage() {
     }
 
     setMessages(p => p.map(m =>
-      m.id === asstId ? { ...m, content: responseText, products, allIngredients, isRecipe, category } : m
+      m.id === asstId ? { ...m, content: responseText, products, allIngredients, isRecipe, category, recipeSuggestions } : m
     ));
     setLoading(false);
     scrollDown();
@@ -287,26 +346,22 @@ export default function AIPage() {
                 <div className="recipe-cart-section">
                   <div className="recipe-available-header">
                     <span className="recipe-available-label">
-                      ✅ Available on Zepto ({msg.products.length} of {msg.allIngredients?.length ?? 0})
+                      ✅ {selectedProducts(msg).length} ingredients selected · ₹{selectedProducts(msg).reduce((sum, product) => sum + product.disc, 0)}
                     </span>
-                    {confirmingMessageId === msg.id ? (
-                      <div className="recipe-confirm-actions">
-                        <span>Ready to add {msg.products.length} available items?</span>
-                        <button className="recipe-add-all-btn" onClick={() => { addAllToCart(msg.products!); setConfirmingMessageId(null); }}>
-                          Confirm · ₹{msg.products.reduce((sum, product) => sum + product.disc, 0)}
-                        </button>
-                      </div>
-                    ) : (
-                      <button className="recipe-add-all-btn" onClick={() => setConfirmingMessageId(msg.id)}>
-                        🛒 Add all to cart
-                      </button>
-                    )}
+                    <button className="recipe-add-all-btn" disabled={selectedProducts(msg).length === 0} onClick={() => setConfirmingMessageId(msg.id)}>
+                      🛒 Add selected
+                    </button>
                   </div>
                   <div className="recipe-products-grid">
-                    {msg.products.map(p => {
+                    {msg.products.map((p) => {
                       const inCart = items.find(e => e.product.id === p.id)?.quantity ?? 0;
+                      const selected = selectedProducts(msg).some((product) => product.id === p.id);
+                      const alreadyHave = (haveByMessage[msg.id] ?? []).includes(p.id);
                       return (
                         <div key={p.id} className="recipe-product-chip">
+                          <button className={`ingredient-check${selected ? " selected" : ""}${alreadyHave ? " owned" : ""}`} aria-label={`${selected ? "Remove" : "Select"} ${p.name}`} onClick={() => toggleIngredient(msg.id, p.id)}>
+                            {alreadyHave ? "✓" : selected ? "✓" : ""}
+                          </button>
                           <div className="rpc-img-wrap">
                             <img src={p.src} alt={p.name} className="rpc-img"
                               onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
@@ -318,10 +373,15 @@ export default function AIPage() {
                           <div className="rpc-right">
                             <span className="rpc-price">₹{p.disc}</span>
                             {inCart > 0
-                              ? <span className="rpc-in-cart">✓ {inCart}</span>
-                              : <button className="rpc-add"
-                                  onClick={() => { addItem(p); addToast(`${p.name} added 🛒`); }}>+</button>}
+                              ? <span className="rpc-in-cart">✓ In cart</span>
+                              : alreadyHave
+                                ? <span className="rpc-owned">Already have</span>
+                                : <button className="rpc-add"
+                                    onClick={() => { addItem(p); addToast(`${p.name} added 🛒`); }}>+</button>}
                           </div>
+                          <button className="ingredient-have-btn" onClick={() => markAlreadyHave(msg.id, p.id)}>
+                            {alreadyHave ? "Undo" : "I already have this"}
+                          </button>
                         </div>
                       );
                     })}
@@ -329,6 +389,22 @@ export default function AIPage() {
                   <p className="recipe-not-available">
                     💡 Other ingredients available at your local kirana store.
                   </p>
+                </div>
+              )}
+
+              {/* Non-recipe product chips */}
+              {msg.recipeSuggestions && msg.recipeSuggestions.length > 0 && (
+                <div className="recipe-suggestion-list">
+                  <span className="recipe-suggestion-kicker">YOU CAN MAKE</span>
+                  {msg.recipeSuggestions.map((suggestion) => (
+                    <button key={suggestion.key} className="recipe-suggestion-row" onClick={() => sendMessage(suggestion.title)}>
+                      <span>
+                        <strong>{suggestion.title}</strong>
+                        <small>{suggestion.time} · Easy · {suggestion.missing} ingredients to check</small>
+                      </span>
+                      <span aria-hidden="true">→</span>
+                    </button>
+                  ))}
                 </div>
               )}
 
@@ -390,6 +466,28 @@ export default function AIPage() {
           onClick={() => sendMessage(input)}
           disabled={loading || !input.trim()}>↑</button>
       </div>
+
+      {confirmingMessageId && (() => {
+        const confirmMessage = messages.find((message) => message.id === confirmingMessageId);
+        if (!confirmMessage) return null;
+        const productsToAdd = selectedProducts(confirmMessage);
+        return (
+          <div className="recipe-confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="recipe-confirm-title">
+            <button className="recipe-confirm-backdrop" aria-label="Close confirmation" onClick={() => setConfirmingMessageId(null)} />
+            <div className="recipe-confirm-sheet">
+              <span className="recipe-confirm-kicker">READY TO COOK 🍳</span>
+              <h2 id="recipe-confirm-title">Your ingredients are ready</h2>
+              <p>{productsToAdd.length} selected · ₹{productsToAdd.reduce((sum, product) => sum + product.disc, 0)}</p>
+              <div className="recipe-confirm-list">
+                {productsToAdd.map((product) => <span key={product.id}>✓ {product.name}</span>)}
+              </div>
+              <button className="recipe-confirm-primary" onClick={() => { addAllToCart(productsToAdd); setConfirmingMessageId(null); }}>
+                Add {productsToAdd.length} ingredients · ₹{productsToAdd.reduce((sum, product) => sum + product.disc, 0)}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
