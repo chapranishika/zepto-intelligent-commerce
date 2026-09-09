@@ -1,10 +1,10 @@
 /**
  * AIPage — Gopi Bahu AI Kitchen Assistant
- * 1420 recipes from real Kaggle datasets + handcrafted dishes
+ * 8,000+ recipes from curated datasets + handcrafted dishes
  * All ingredients mapped to real Zepto product IDs
  */
 import { useRef, useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useCartStore, useUIStore } from "../store";
 import { PRODUCTS, type Product } from "../lib/products";
 import { RECIPES } from "../lib/recipes";
@@ -107,7 +107,15 @@ const STATIC: Record<string, { text: string; product_ids?: number[] }> = {
     product_ids: [27, 1, 0, 4152],
   },
   help: {
-    text: "✨ I'm **Gopi Bahu** 👩‍🍳, your Zepto kitchen assistant!\n\nI know **1,420+ real dishes** from Indian, World and regional cuisines!\n\nTell me any dish → I'll show:\n📋 Full ingredient list\n🛒 Available on Zepto (add all in one tap!)\n👨‍🍳 Step-by-step cooking instructions\n\nTry: *dal tadka, chole bhature, banana bread, gulab jamun, pasta, pad thai, biryani, rasam...*",
+    text: "✨ I'm **Gopi Bahu** 👩‍🍳, your Zepto kitchen assistant!\n\nI know **8,000+ dishes** from Indian, World and regional cuisines!\n\nTell me any dish → I'll show:\n📋 Full ingredient list\n🛒 Available on Zepto (add all in one tap!)\n👨‍🍳 Step-by-step cooking instructions\n\nTry: *dal tadka, chole bhature, banana bread, gulab jamun, pasta, pad thai, biryani, rasam...*",
+  },
+  mood: {
+    text: "🌿 **Something comforting**\n\nIf you want food that feels warm and easy, try a simple dal tadka with rice, or a banana-oats breakfast if you want something lighter. I can also help you choose by time, spice level, or budget.\n\n*This is a food suggestion, not medical or mental-health advice.*",
+    product_ids: [920, 2307, 27, 4141],
+  },
+  protein: {
+    text: "💪 **Higher-protein ideas**\n\nTry paneer with spinach, Greek-style yoghurt with fruit, or eggs with vegetables. Tell me whether you eat vegetarian, how much time you have, and what flavours you enjoy, and I’ll narrow it down.\n\n*Nutrition needs vary; this is general food guidance, not medical advice.*",
+    product_ids: [4152, 923, 4148, 4142],
   },
 };
 
@@ -135,10 +143,13 @@ const QUICK_PROMPTS = [
   { label: "🌍 Pasta carbonara",   text: "pasta carbonara" },
   { label: "🔄 Return item",       text: "return damaged item" },
   { label: "💰 Best deals",        text: "best deals today" },
+  { label: "🌿 Comfort food",      text: "I want something comforting" },
+  { label: "💪 High protein",      text: "suggest high protein food" },
 ];
 
 export default function AIPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { addItem, items } = useCartStore();
   const addToast = useUIStore((s) => s.addToast);
   const inputRef  = useRef<HTMLInputElement>(null);
@@ -146,14 +157,24 @@ export default function AIPage() {
 
   const [messages, setMessages] = useState<Msg[]>([{
     id: "intro", role: "assistant",
-    content: `Hi! I'm **Gopi Bahu** 👩‍🍳!\n\nI know **1,420+ dishes** — Indian, World, Regional cuisines!\n\nTell me any dish → full ingredients + add to cart! 🛒`,
+    content: `Hi! I'm **Gopi Bahu** 👩‍🍳!\n\nI know **8,000+ dishes** — Indian, World, Regional cuisines!\n\nTell me any dish → full ingredients + add to cart! 🛒`,
   }]);
   const [input, setInput]     = useState("");
   const [loading, setLoading] = useState(false);
+  const [confirmingMessageId, setConfirmingMessageId] = useState<string | null>(null);
   const [totalRecipes]        = useState(Object.keys(RECIPES).length);
+  const initialQuery = searchParams.get("query")?.trim() ?? "";
+  const initialQuerySent = useRef(false);
 
   // Pre-build index on mount
   useEffect(() => { _idx = buildIndex(); }, []);
+
+  useEffect(() => {
+    if (initialQuery && !initialQuerySent.current) {
+      initialQuerySent.current = true;
+      sendMessage(initialQuery);
+    }
+  }, [initialQuery]);
 
   function scrollDown() {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 60);
@@ -202,7 +223,11 @@ export default function AIPage() {
       isRecipe      = true;
       category      = recipe.category;
     } else {
-      const key = Object.keys(STATIC).find(k => q.includes(k)) ?? "help";
+      const key = q.includes("protein") || q.includes("gym") || q.includes("workout")
+        ? "protein"
+        : q.includes("mood") || q.includes("comfort") || q.includes("cheer") || q.includes("sad")
+          ? "mood"
+          : Object.keys(STATIC).find(k => q.includes(k)) ?? "help";
       const resp = STATIC[key];
       responseText = resp.text;
       products = (resp.product_ids ?? [])
@@ -264,9 +289,18 @@ export default function AIPage() {
                     <span className="recipe-available-label">
                       ✅ Available on Zepto ({msg.products.length} of {msg.allIngredients?.length ?? 0})
                     </span>
-                    <button className="recipe-add-all-btn" onClick={() => addAllToCart(msg.products!)}>
-                      🛒 Add all to cart
-                    </button>
+                    {confirmingMessageId === msg.id ? (
+                      <div className="recipe-confirm-actions">
+                        <span>Ready to add {msg.products.length} available items?</span>
+                        <button className="recipe-add-all-btn" onClick={() => { addAllToCart(msg.products!); setConfirmingMessageId(null); }}>
+                          Confirm · ₹{msg.products.reduce((sum, product) => sum + product.disc, 0)}
+                        </button>
+                      </div>
+                    ) : (
+                      <button className="recipe-add-all-btn" onClick={() => setConfirmingMessageId(msg.id)}>
+                        🛒 Add all to cart
+                      </button>
+                    )}
                   </div>
                   <div className="recipe-products-grid">
                     {msg.products.map(p => {

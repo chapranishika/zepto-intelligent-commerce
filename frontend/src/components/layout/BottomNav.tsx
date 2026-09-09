@@ -5,7 +5,7 @@ const NAV = [
   { path: "/home",     icon: "🏠", label: "Home"       },
   { path: "/category", icon: "🗂️", label: "Categories"  },
   { path: "/cart",     icon: "🛒", label: "Cart",  badge: true },
-  { path: "/ai",       icon: "✨", label: "AI"          },
+  { path: "/cook",     icon: "✨", label: "Cook"        },
   { path: "/profile",  icon: "👤", label: "Profile"     },
 ];
 
@@ -17,7 +17,9 @@ export default function BottomNav() {
   return (
     <nav className="bottom-nav">
       {NAV.map(({ path, icon, label, badge }) => {
-        const active = pathname.startsWith(path);
+        const active = path === "/cook"
+          ? pathname.startsWith("/cook") || pathname.startsWith("/ai")
+          : pathname.startsWith(path);
         return (
           <button
             key={path}

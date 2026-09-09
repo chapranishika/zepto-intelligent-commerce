@@ -123,28 +123,28 @@ curl http://localhost:8000/api/v1/recommend/global/trending
 
 ---
 
-## 7. Deploy backend to Railway pointing at Supabase
+## 7. Deploy backend to Render pointing at Supabase
 
 1. Push your repo to GitHub
-2. Go to https://railway.app → **New Project** → **Deploy from GitHub repo**
+2. Go to https://render.com → **New Web Service** → **Deploy from GitHub repo**
 3. Select the repo, set root directory to `backend/`
-4. In Railway → **Variables**, add:
+4. In Render → **Environment**, add:
    ```
    DATABASE_URL  = <Supabase Transaction Pooler URL, port 6543>
-   REDIS_URL     = <Upstash Redis URL or Railway Redis addon>
+   REDIS_URL     = <Upstash Redis URL>
    ANTHROPIC_API_KEY = sk-ant-...
    SECRET_KEY    = <your secret>
    ALLOWED_ORIGINS = https://your-app.vercel.app
    ```
-5. Railway auto-detects the Dockerfile and deploys
+5. Render auto-detects the Dockerfile and deploys
 
 ---
 
-## 8. Deploy frontend to Vercel pointing at Railway
+## 8. Deploy frontend to Vercel pointing at Render
 
 ```bash
 cd frontend
-echo "VITE_API_URL=https://your-railway-backend.up.railway.app/api/v1" > .env.production
+echo "VITE_API_URL=https://instantdeliverycloneapp.onrender.com/api/v1" > .env.production
 ```
 
 Then deploy:

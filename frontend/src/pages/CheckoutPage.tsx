@@ -130,12 +130,9 @@ export default function CheckoutPage() {
                 <div className="addr-check">✓</div>
               </div>
             ))}
-            <button
-              className="addr-add"
-              onClick={() => addToast("Address form coming soon")}
-            >
-              <span>+</span> Add new address
-            </button>
+            <p className="checkout-note">
+              Choose a saved address for this demo order. Address management can be connected to the customer profile next.
+            </p>
           </>
         )}
 

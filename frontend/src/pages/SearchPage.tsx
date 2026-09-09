@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PRODUCTS } from "../lib/products";
+import { RECIPES } from "../lib/recipes";
 import ProductCard from "../components/ui/ProductCard";
 
 const POPULAR = ["tomato", "banana", "spinach", "milk", "onion", "mushroom", "masala", "soap"];
@@ -37,6 +38,14 @@ export default function SearchPage() {
     doSearch(v);
   }
 
+  const cookingMatch = query.trim().length > 2
+    ? Object.values(RECIPES).find((recipe) => {
+        const words = query.toLowerCase().split(/\s+/).filter((word) => word.length > 2);
+        const title = recipe.title.toLowerCase();
+        return words.length > 0 && words.every((word) => title.includes(word));
+      })
+    : undefined;
+
   return (
     <div className="page search-page">
       <header className="search-header">
@@ -48,7 +57,7 @@ export default function SearchPage() {
             className="search-input-field"
             value={query}
             onChange={(e) => handleChange(e.target.value)}
-            placeholder="Search vegetables, fruits & more…"
+            placeholder="Search groceries, recipes, dishes & more…"
           />
           {query && (
             <button className="search-clear" onClick={() => { setQuery(""); setResults(null); }}>
@@ -80,6 +89,18 @@ export default function SearchPage() {
             <p className="search-result-count">
               {results.length} result{results.length !== 1 ? "s" : ""} for &ldquo;{query}&rdquo;
             </p>
+            {cookingMatch && (
+              <div className="search-cook-bridge">
+                <div>
+                  <span className="search-cook-kicker">COOK WITH ZEPTO AI</span>
+                  <strong>{cookingMatch.title}</strong>
+                  <span>{cookingMatch.time} · {cookingMatch.serves} servings · ingredients to cart</span>
+                </div>
+                <button onClick={() => navigate(`/cook?query=${encodeURIComponent(cookingMatch.title)}`)}>
+                  Open recipe →
+                </button>
+              </div>
+            )}
             {results.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-icon">🔍</div>

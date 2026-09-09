@@ -43,11 +43,22 @@ a      { text-decoration: none; color: inherit; }
 .app-content { flex: 1; padding-bottom: 68px; }
 .page        { min-height: 100vh; background: #FAFAF8; }
 
+/* A quiet signature that stays present without competing with the shopping flow. */
+.signature-footer {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 46px; padding: 12px 18px 18px;
+  background: #FAFAF8; color: var(--mu); font-size: 11px; line-height: 1.4;
+  text-align: center;
+}
+.signature-footer strong { color: var(--tx); font-weight: 700; }
+.signature-mark { color: #E3485B; font-size: 15px; line-height: 1; }
+.signature-dot { color: var(--gm); }
+
 /* ── Topbar ─────────────────────────────────────────────────── */
 .topbar {
-  background: var(--dk);
+  background: #101010;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 14px; height: 50px;
+  padding: 0 22px; height: 58px;
   position: sticky; top: 0; z-index: 100;
 }
 .logo { display: flex; align-items: center; gap: 6px; cursor: pointer; }
@@ -101,7 +112,7 @@ a      { text-decoration: none; color: inherit; }
   background: linear-gradient(to right, rgba(0,0,0,.8) 0%, rgba(0,0,0,.45) 55%, transparent 100%);
 }
 .hero-content {
-  position: absolute; inset: 0; padding: 16px 14px;
+  position: absolute; inset: 0; padding: 24px 28px;
   display: flex; flex-direction: column; justify-content: center;
 }
 .hero-badge {
@@ -111,10 +122,13 @@ a      { text-decoration: none; color: inherit; }
 }
 .hero-badge span { color: #A78BFA; font-size: 10px; font-weight: 600; }
 .hero-title {
-  font-size: 20px; font-weight: 800; color: #fff;
-  line-height: 1.15; margin-bottom: 5px; letter-spacing: -.4px;
+  max-width: 470px; font-size: clamp(25px, 3.8vw, 48px); font-weight: 800; color: #fff;
+  line-height: 1.02; margin-bottom: 9px; letter-spacing: 0;
 }
 .hero-title em { color: #A78BFA; font-style: normal; }
+.hero-subtitle { max-width: 370px; color: rgba(255,255,255,.72); font-size: 12px; line-height: 1.45; }
+.hero-action { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; padding: 9px 13px; border-radius: 9px; background: #fff; color: #22112f; font-size: 11px; font-weight: 800; }
+.hero-action:hover { background: #f1eaff; }
 .hero-stats { display: flex; gap: 14px; margin-top: 11px; padding-top: 11px; border-top: 1px solid rgba(255,255,255,.1); }
 .stat { text-align: center; }
 .stat-num  { font-family: 'Syne',sans-serif; font-size: 14px; font-weight: 700; color: #fff; }
@@ -133,6 +147,32 @@ a      { text-decoration: none; color: inherit; }
   font-size: 11px; font-weight: 500; cursor: pointer; transition: all .18s;
 }
 .cat-pill:hover, .cat-pill.active { background: var(--pk); border-color: var(--pk); color: #fff; }
+
+/* The product's signature action: move from a food intention to useful help. */
+.intent-card {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 18px;
+  margin: 14px 14px 10px; padding: 17px 18px 15px;
+  border: 1px solid rgba(128,37,251,.18); border-radius: 18px;
+  background: linear-gradient(110deg, #fff 0%, #fcf9ff 62%, #f2eaff 100%);
+  box-shadow: 0 5px 18px rgba(87,38,145,.06);
+}
+.intent-copy { min-width: 0; }
+.intent-kicker { color: var(--pk); font-size: 9px; font-weight: 800; letter-spacing: .12em; }
+.intent-card h2 { max-width: 430px; margin: 5px 0 5px; font-size: clamp(17px, 2vw, 22px); line-height: 1.1; }
+.intent-card p { max-width: 510px; color: var(--mu); font-size: 12px; line-height: 1.45; }
+.intent-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.intent-chips span { padding: 5px 8px; border: 1px solid rgba(128,37,251,.14); border-radius: 999px; background: rgba(255,255,255,.72); color: #5d4b72; font-size: 10px; }
+.intent-form { display: flex; flex: 0 1 390px; gap: 7px; padding: 4px; border: 1px solid rgba(128,37,251,.16); border-radius: 12px; background: rgba(255,255,255,.72); }
+.intent-form input { min-width: 0; flex: 1; padding: 0 8px; background: transparent; color: var(--tx); font-size: 11px; }
+.intent-form input::placeholder { color: #8b8095; }
+.intent-action { flex-shrink: 0; min-height: 38px; padding: 0 14px; border-radius: 9px; background: var(--pk); color: #fff; font-size: 11px; font-weight: 700; box-shadow: var(--shadow-pk); }
+.intent-action:hover { background: var(--pkd); }
+.search-cook-bridge { display:flex; align-items:center; justify-content:space-between; gap:14px; margin:0 14px 14px; padding:14px 16px; border:1px solid rgba(128,37,251,.18); border-radius:14px; background:linear-gradient(110deg,#fff,#f6f0ff); }
+.search-cook-bridge > div { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.search-cook-kicker { color:var(--pk); font-size:9px; font-weight:800; letter-spacing:.1em; }
+.search-cook-bridge strong { font-family:'Syne',sans-serif; font-size:15px; line-height:1.2; }
+.search-cook-bridge span:last-child { color:var(--mu); font-size:11px; }
+.search-cook-bridge button { flex-shrink:0; padding:9px 12px; border-radius:9px; background:var(--pk); color:#fff; font-size:11px; font-weight:700; }
 
 /* ── Promo banners ──────────────────────────────────────────── */
 .promo-scroll { display: flex; gap: 10px; overflow-x: auto; padding: 10px 14px; scrollbar-width: none; }
@@ -758,6 +798,7 @@ a      { text-decoration: none; color: inherit; }
 .addr-card.selected .addr-check{opacity:1}
 .addr-add{border:2px dashed var(--gm);border-radius:13px;padding:13px;text-align:center;cursor:pointer;color:var(--pk);font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s;width:100%}
 .addr-add:hover{border-color:var(--pk);background:var(--pkl)}
+.checkout-note{margin:12px 0 0;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--off);color:var(--mu);font-size:12px;line-height:1.5}
 
 /* Payment methods */
 .pay-method{background:#fff;border:2px solid var(--gm);border-radius:13px;padding:12px 13px;cursor:pointer;display:flex;align-items:center;gap:11px;transition:all .15s}
@@ -1030,6 +1071,13 @@ a      { text-decoration: none; color: inherit; }
   }
 }
 
+/* Give larger laptops room to breathe while keeping the focused tablet frame. */
+@media (min-width: 1200px) {
+  .app-shell,
+  .bottom-nav,
+  .checkout-bar { max-width: 1180px; }
+}
+
 @media (min-width: 1200px) {
   .app-shell {
     max-width: 1200px;
@@ -1060,6 +1108,7 @@ a      { text-decoration: none; color: inherit; }
    ══════════════════════════════════════════════════════════════ */
 .recipe-cart-section{margin-top:12px;border-top:1px solid rgba(255,255,255,.15);padding-top:10px}
 .recipe-available-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px}
+.recipe-confirm-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;color:rgba(255,255,255,.72);font-size:10px}
 .recipe-available-label{font-size:11px;font-weight:600;color:#00d48d;flex:1}
 .recipe-add-all-btn{background:#00d48d;color:#fff;border:none;border-radius:10px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .18s}
 .recipe-add-all-btn:hover{background:#00b876}
@@ -1103,6 +1152,13 @@ img  { max-width: 100%; }
   .hero-title           { font-size: 16px; }
   .hero-stats           { gap: 10px; }
   .hero-stat-val        { font-size: 14px; }
+
+  .intent-card          { display: block; margin: 10px; padding: 15px; }
+  .intent-card h2       { font-size: 17px; }
+  .intent-card p        { font-size: 11px; }
+  .intent-form          { display: block; padding: 5px; }
+  .intent-form input    { width: 100%; min-height: 34px; padding: 0 8px; }
+  .intent-action        { width: 100%; margin-top: 5px; }
 
   .promo-rail           { padding: 10px 10px 0; gap: 8px; }
   .promo-card           { min-width: 230px; }
@@ -1506,6 +1562,11 @@ img  { max-width: 100%; }
   }
 }
 
+/* The bottom navigation is fixed, so the signature must never sit beneath it. */
+@media (max-width: 1199px) {
+  .signature-footer { padding-bottom: 78px; }
+}
+
 /* ── Print (hide nav / UI chrome) ────────────────────────────── */
 @media print {
   .topbar, .bottom-nav, .checkout-bar, .chat-input-bar { display: none !important; }
@@ -1587,3 +1648,72 @@ img  { max-width: 100%; }
 .login-promo p { font-size: 13px; font-weight: 600; color: var(--pk,#8025FB); margin-bottom: 8px; }
 .login-promo-chips { display: flex; gap: 8px; flex-wrap: wrap; }
 .promo-chip { background: var(--pk,#8025FB); color: #fff; border-radius: 8px; padding: 4px 10px; font-size: 11px; font-weight: 700; }
+
+/* ══════════════════════════════════════════════════════════════
+   FINAL RATIO-SAFE LAYOUT OVERRIDES
+   These rules target the components that are actually rendered.
+   ══════════════════════════════════════════════════════════════ */
+html, body, #root { width: 100%; min-width: 0; }
+.app-shell, .app-content, .page { min-width: 0; }
+.page { min-height: 100dvh; }
+.home-main, .cat-product-area, .pdtl, .checkout-body { min-width: 0; }
+.signature-footer { overflow-wrap: anywhere; }
+
+@media (min-width: 768px) {
+  .app-shell { width: 100%; max-width: 1180px; }
+  .bottom-nav, .checkout-bar { max-width: 1180px; }
+  .rail-scroll { padding-left: 24px; padding-right: 24px; }
+  .rail-scroll .product-card { width: 162px; }
+  .promo-scroll { padding-left: 24px; padding-right: 24px; }
+  .promo-card { width: clamp(220px, 30vw, 340px); }
+  .intent-card { margin-left: 24px; margin-right: 24px; }
+}
+
+@media (min-width: 1200px) {
+  .rail-scroll .product-card { width: 178px; }
+  .hero-section { margin-left: 24px; margin-right: 24px; }
+  .cat-scroll-wrap { padding-left: 24px; padding-right: 24px; }
+  .cat-scroll { padding-right: 4px; }
+}
+
+@media (max-width: 767px) {
+  .app-shell { width: 100%; }
+  .page { min-height: 100dvh; }
+  .hero-img { object-position: center; }
+  .rail-scroll { overscroll-behavior-inline: contain; }
+  .product-card { min-width: 136px; }
+  .intent-card { max-width: calc(100vw - 20px); }
+  .signature-footer { padding-left: 14px; padding-right: 14px; }
+}
+
+@media (max-width: 359px) {
+  .topbar-right { gap: 4px; }
+  .del-badge span:not(.dot-green) { max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hero-title { font-size: 15px; }
+  .hero-stats { gap: 7px; }
+  .intent-card h2 { font-size: 16px; }
+  .cat-product-grid, .search-grid { gap: 6px !important; padding-left: 8px; padding-right: 8px; }
+}
+
+/* Final visual calibration for the reference layout. */
+@media (min-width: 768px) {
+  .topbar { padding-left: 28px; padding-right: 28px; }
+  .search-bar-wrap { padding: 0 28px 14px; }
+  .hero-section { min-height: 270px; }
+  .hero-content { padding: 30px 32px; }
+  .hero-subtitle { font-size: 13px; }
+  .hero-stats { margin-top: 17px; }
+  .intent-card { align-items: center; }
+}
+
+@media (max-width: 479px) {
+  .topbar { padding-left: 12px; padding-right: 12px; }
+  .search-bar-wrap { padding-left: 12px; padding-right: 12px; }
+  .hero-content { padding: 18px 16px; }
+  .hero-title { max-width: 260px; font-size: 24px; }
+  .hero-subtitle { max-width: 245px; font-size: 10px; }
+  .hero-action { margin-top: 10px; padding: 8px 10px; font-size: 10px; }
+  .hero-stats { margin-top: 9px; padding-top: 8px; gap: 9px; }
+  .search-cook-bridge { align-items:stretch; flex-direction:column; margin-left:10px; margin-right:10px; }
+  .search-cook-bridge button { width:100%; }
+}

@@ -27,6 +27,17 @@ function ToastStack() {
   );
 }
 
+function SignatureFooter() {
+  return (
+    <footer className="signature-footer" aria-label="Project credit">
+      <span className="signature-mark" aria-hidden="true">♥</span>
+      <span>Built with care by <strong>Nishika Chapra</strong></span>
+      <span className="signature-dot" aria-hidden="true">·</span>
+      <span>Thoughtful food, faster</span>
+    </footer>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -42,11 +53,13 @@ export default function App() {
             <Route path="/success"       element={<OrderSuccessPage />}  />
             <Route path="/track"         element={<OrderTrackingPage />} />
             <Route path="/ai"            element={<AIPage />}            />
+            <Route path="/cook"          element={<AIPage />}            />
             <Route path="/search"        element={<SearchPage />}        />
             <Route path="/profile"       element={<ProfilePage />}       />
             <Route path="/login"         element={<LoginPage />}         />
           </Routes>
         </div>
+        <SignatureFooter />
         <BottomNav />
         <ToastStack />
       </div>

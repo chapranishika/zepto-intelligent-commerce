@@ -9,15 +9,14 @@ depended on Instacart parquet files that were never generated):
   1. Loads REAL CF factors from 02_collaborative_filtering.py
      (TruncatedSVD trained on synthetic persona-based interactions)
   2. Loads REAL CBF embeddings from 03_content_embeddings.py
-     (TF-IDF + FAISS index over the 33 products)
+    (TF-IDF + FAISS index over the canonical catalogue)
   3. Builds per-(user, candidate) feature vectors: CF score, CBF score
      (cosine similarity to the user's "taste centroid"), popularity,
      rating, price, and category one-hot / category-match
   4. Trains a real `lightgbm.LGBMRanker` with objective="lambdarank"
   5. Evaluates Precision@10 / Recall@10 / NDCG@10 for FOUR systems on a
-     held-out set of users: Popularity-only, CF-only, CBF-only, and the
-     trained Hybrid ranker — all computed from real predictions, nothing
-     hardcoded.
+      held-out set of users and reports user-level bootstrap confidence
+      intervals for the computed metrics.
 
 Prerequisites (run first):
     python ml_research/02_collaborative_filtering.py
@@ -298,8 +297,21 @@ for (user_id, candidates, relevant), g in zip(eval_meta, groups_eval):
 
 
 print(f"\n  Evaluated on {len(eval_meta)} held-out users")
-print(f"\n  {'Model':<28} {'Precision@10':>13} {'Recall@10':>11} {'NDCG@10':>9}")
-print("  " + "-" * 64)
+
+
+def bootstrap_interval(values, seed=42, n_boot=2000):
+    """Return the mean and percentile 95% CI over users."""
+    values = np.asarray(values, dtype=np.float64)
+    if len(values) < 2:
+        mean = float(values.mean()) if len(values) else 0.0
+        return mean, mean, mean
+    rng = np.random.default_rng(seed)
+    samples = rng.choice(values, size=(n_boot, len(values)), replace=True).mean(axis=1)
+    return float(values.mean()), float(np.quantile(samples, 0.025)), float(np.quantile(samples, 0.975))
+
+
+print(f"\n  {'Model':<28} {'Precision@10':>25} {'Recall@10':>23} {'NDCG@10':>21}")
+print("  " + "-" * 102)
 labels = {
     "popularity": "Popularity baseline",
     "cf":         "CF only (SVD)",
@@ -308,11 +320,18 @@ labels = {
 }
 results_summary = {}
 for key, label in labels.items():
-    p = np.mean(metrics[key]["p"])
-    r = np.mean(metrics[key]["r"])
-    n = np.mean(metrics[key]["n"])
-    results_summary[key] = {"precision": p, "recall": r, "ndcg": n}
-    print(f"  {label:<28} {p:>13.4f} {r:>11.4f} {n:>9.4f}")
+    p, p_low, p_high = bootstrap_interval(metrics[key]["p"], seed=42)
+    r, r_low, r_high = bootstrap_interval(metrics[key]["r"], seed=43)
+    n, n_low, n_high = bootstrap_interval(metrics[key]["n"], seed=44)
+    results_summary[key] = {
+        "precision": p, "precision_lower": p_low, "precision_upper": p_high,
+        "recall": r, "recall_lower": r_low, "recall_upper": r_high,
+        "ndcg": n, "ndcg_lower": n_low, "ndcg_upper": n_high,
+        "users": len(metrics[key]["p"]),
+    }
+    print(f"  {label:<28} {p:.4f} [{p_low:.4f}, {p_high:.4f}] "
+          f"{r:.4f} [{r_low:.4f}, {r_high:.4f}] "
+          f"{n:.4f} [{n_low:.4f}, {n_high:.4f}]")
 
 pop_p = results_summary["popularity"]["precision"]
 hyb_p = results_summary["hybrid"]["precision"]
@@ -339,7 +358,8 @@ print("✅  04_hybrid_ranker.py COMPLETE")
 print("=" * 60)
 print("  All four sets of metrics above were computed from real model")
 print("  predictions on synthetic persona-based data — none are hardcoded.")
-print("  Note: small catalogue (33 items) means @10 metrics are naturally")
-print("  higher than they would be on a 50k-item real catalogue.")
+print("  Confidence intervals are user-level bootstrap 95% intervals (2,000 resamples).")
+print("  The benchmark uses the generated 5,060-item catalogue; synthetic interactions")
+print("  are a reproducible proxy, not evidence of production user performance.")
 print("\n  Next: backend/app/ml/ranker/ loads hybrid_ranker.txt to serve")
 print("  /recommend/{user_id} via the FastAPI backend.")

@@ -52,7 +52,7 @@ app = FastAPI(
 # ── Middleware ──────────────────────────────────────────────────────────────
 ALLOWED_ORIGINS = os.environ.get(
     "ALLOWED_ORIGINS",
-    "http://localhost:5173,http://localhost:3000,https://zepto-clone.vercel.app",
+    "http://localhost:5173,http://localhost:3000,https://zeptoclone-nishika.vercel.app",
 ).split(",")
 
 app.add_middleware(

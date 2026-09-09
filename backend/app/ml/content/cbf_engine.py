@@ -25,12 +25,16 @@ class ContentBasedEngine:
 
     def load(self):
         try:
-            import faiss
             import scipy.sparse as sp
 
-            self.faiss_index = faiss.read_index(
-                str(MODELS_DIR / "faiss_product_index.bin")
-            )
+            try:
+                import faiss
+            except ImportError:
+                faiss = None
+
+            index_path = MODELS_DIR / "faiss_product_index.bin"
+            if faiss is not None and index_path.exists():
+                self.faiss_index = faiss.read_index(str(index_path))
             self.product_ids = np.load(MODELS_DIR / "faiss_product_ids.npy")
             self.embeddings  = np.load(
                 MODELS_DIR / "product_embeddings.npy"
@@ -45,7 +49,8 @@ class ContentBasedEngine:
 
             self.loaded = True
             logger.info(
-                f"CBF engine ready: {self.faiss_index.ntotal} products in FAISS"
+                f"CBF engine ready: {len(self.product_ids)} products "
+                f"({'FAISS' if self.faiss_index is not None else 'NumPy cosine fallback'})"
             )
         except Exception as exc:
             logger.warning(f"CBF engine load failed: {exc}. Running degraded.")
@@ -73,8 +78,8 @@ class ContentBasedEngine:
         p_idx = prod_list.index(product_id)
         query = self.embeddings[p_idx : p_idx + 1]
 
-        k = min(n + len(exclude) + 10, self.faiss_index.ntotal)
-        distances, indices = self.faiss_index.search(query, k)
+        k = min(n + len(exclude) + 10, len(self.product_ids))
+        distances, indices = self._search(query, k)
 
         results = []
         for idx, dist in zip(indices[0], distances[0]):
@@ -101,7 +106,7 @@ class ContentBasedEngine:
             return []
         try:
             emb = self._embed_query(query)
-            distances, indices = self.faiss_index.search(emb, n)
+            distances, indices = self._search(emb, n)
             return [
                 {
                     "product_id": int(self.product_ids[i]),
@@ -124,6 +129,14 @@ class ContentBasedEngine:
             [query.lower()], normalize_embeddings=True
         ).astype(np.float32)
         return emb
+
+    def _search(self, query: np.ndarray, n: int):
+        if self.faiss_index is not None:
+            return self.faiss_index.search(query, n)
+        scores = (query @ self.embeddings.T).ravel()
+        n = min(n, len(scores))
+        indices = np.argsort(scores)[::-1][:n]
+        return scores[indices][None, :], indices[None, :]
 
     def _tfidf_search(self, query: str, n: int) -> List[dict]:
         if self.tfidf is None or self.tfidf_matrix is None:
@@ -153,7 +166,7 @@ class ContentBasedEngine:
         centroid = np.array(
             self.dept_centroids[department], dtype=np.float32
         ).reshape(1, -1)
-        distances, indices = self.faiss_index.search(centroid, n)
+        distances, indices = self._search(centroid, n)
         return [
             {
                 "product_id": int(self.product_ids[i]),

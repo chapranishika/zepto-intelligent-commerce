@@ -21,11 +21,28 @@ const PROMOS = [
 
 const toList = (ids: number[]) => ids.map(getById).filter(Boolean) as ReturnType<typeof getById>[];
 
+const CATEGORY_LABELS: Record<string, string> = {
+  "Fresh Fruits": "Fruits",
+  "Fresh Vegetables": "Vegetables",
+  "Leafy Herbs": "Leafy",
+  "Exotic Veggies": "Exotic",
+  "Cold Drinks & Juices": "Drinks",
+  "Dairy, Bread & Eggs": "Dairy",
+  "Snacks & Munchies": "Snacks",
+  "Zepto Cafe": "Cafe",
+};
+
 export default function HomePage() {
   const navigate   = useNavigate();
   const totalItems = useCartStore((s) => s.totalItems());
   const addToast   = useUIStore((s) => s.addToast);
   const [activeCat, setActiveCat] = useState("");
+  const [cookQuery, setCookQuery] = useState("");
+
+  function openCook() {
+    const query = cookQuery.trim();
+    navigate(query ? `/cook?query=${encodeURIComponent(query)}` : "/cook");
+  }
 
   const catProducts = activeCat
     ? PRODUCTS.filter((p) => p.type === activeCat)
@@ -45,15 +62,15 @@ export default function HomePage() {
           />
           <span className="logo-text">zepto</span>
         </div>
-        <button className="del-badge">
+          <button className="del-badge" aria-label="Change delivery location">
           <span className="dot-green" />
           <span>Delivering to Mumbai</span>
           <span className="chevron">▾</span>
         </button>
         <div className="topbar-right">
-          <button className="icon-btn" onClick={() => navigate("/wishlist")}>♡</button>
-          <button className="cart-chip" onClick={() => navigate("/cart")}>
-            🛒{totalItems > 0 && <span className="cart-chip-count">{totalItems}</span>}
+          <button className="icon-btn" aria-label="Saved products" onClick={() => navigate("/profile")}>♡</button>
+          <button className="cart-chip" aria-label="Open cart" onClick={() => navigate("/cart")}>
+            <span aria-hidden="true">🛒</span>{totalItems > 0 && <span className="cart-chip-count">{totalItems}</span>}
           </button>
         </div>
       </header>
@@ -76,8 +93,10 @@ export default function HomePage() {
           <div className="hero-content">
             <div className="hero-badge"><span>⚡</span><span>10-minute delivery — always</span></div>
             <h1 className="hero-title">
-              Fresh groceries<br />in <em>10 minutes</em>,<br />every time.
+              Fresh groceries<br />for <em>real life.</em>
             </h1>
+            <p className="hero-subtitle">From tonight's dinner to tomorrow's breakfast, delivered while it still matters.</p>
+            <button className="hero-action" onClick={() => navigate("/category")}>Shop fresh picks <span aria-hidden="true">→</span></button>
             <div className="hero-stats">
               {[["10","min","Delivery"],["5k","+","Products"],["4.8","★","Rating"],["2M","+","Orders"]].map(([n,u,l]) => (
                 <div className="stat" key={l}>
@@ -101,11 +120,36 @@ export default function HomePage() {
                 className={`cat-pill${activeCat === type ? " active" : ""}`}
                 onClick={() => setActiveCat(type)}
               >
-                {emoji} {type.split(" ")[0]}
+                {emoji} {CATEGORY_LABELS[type] ?? type.split(" ")[0]}
               </button>
             ))}
           </div>
         </div>
+
+        {/* ── Intent-led shopping entry point ── */}
+        <section className="intent-card" aria-labelledby="intent-title">
+          <div className="intent-copy">
+            <span className="intent-kicker">COOK WITH ZEPTO AI</span>
+            <h2 id="intent-title">What are you in the mood to make?</h2>
+            <p>Tell Gopi Bahu a dish, a craving, or what is already in your kitchen.</p>
+            <div className="intent-chips" aria-hidden="true">
+              <span>🍝 Quick dinner</span>
+              <span>🌿 High protein</span>
+              <span>🍲 Comfort food</span>
+            </div>
+          </div>
+          <form className="intent-form" onSubmit={(event) => { event.preventDefault(); openCook(); }}>
+            <input
+              aria-label="What do you want to cook?"
+              value={cookQuery}
+              onChange={(event) => setCookQuery(event.target.value)}
+              placeholder="What do you want to cook?"
+            />
+            <button className="intent-action" type="submit">
+              Ask Gopi Bahu <span aria-hidden="true">→</span>
+            </button>
+          </form>
+        </section>
 
         {/* ── Promo banners with real photos ── */}
         <div className="promo-scroll">

@@ -35,7 +35,10 @@ import warnings
 from pathlib import Path
 
 import numpy as np
-import faiss
+try:
+    import faiss
+except ImportError:
+    faiss = None
 import scipy.sparse as sp
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -131,17 +134,23 @@ print(f"  Embedding dim: {embeddings_norm.shape[1]}")
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Step 3: Build FAISS index ─────────────────────────────────────────────────
-print("\n[2/4] Building FAISS IndexFlatIP...")
+print("\n[2/4] Building content-similarity index...")
 
-dim = embeddings_norm.shape[1]
-index = faiss.IndexFlatIP(dim)   # inner product on L2-normalised = cosine
-index.add(embeddings_norm)
-
-print(f"  Index type: IndexFlatIP  (exact, no approximation needed for 33 items)")
-print(f"  Vectors in index: {index.ntotal}")
+if faiss is not None:
+    dim = embeddings_norm.shape[1]
+    index = faiss.IndexFlatIP(dim)
+    index.add(embeddings_norm)
+    print(f"  Index type: FAISS IndexFlatIP (exact cosine)")
+    print(f"  Vectors in index: {index.ntotal}")
+    D, I = index.search(embeddings_norm[:1], k=5)
+else:
+    index = None
+    scores = embeddings_norm[0] @ embeddings_norm.T
+    I = np.argsort(scores)[::-1][:5][None, :]
+    D = scores[I]
+    print("  FAISS unavailable; using exact NumPy cosine search fallback")
 
 # Quick self-similarity check
-D, I = index.search(embeddings_norm[:1], k=5)
 top5 = [(products[i]["name"], round(float(D[0][j]), 4)) for j, i in enumerate(I[0])]
 print(f"  Sanity check — top-5 for '{products[0]['name']}':")
 for name, score in top5:
@@ -162,7 +171,11 @@ for category in set(p["category"] for p in products):
 # ── Step 5: Save all artifacts ────────────────────────────────────────────────
 print("\n[4/4] Saving model artifacts...")
 
-faiss.write_index(index, str(MODELS_DIR / "faiss_product_index.bin"))
+index_path = MODELS_DIR / "faiss_product_index.bin"
+if index is not None:
+    faiss.write_index(index, str(index_path))
+elif index_path.exists():
+    index_path.unlink()
 np.save(MODELS_DIR / "faiss_product_ids.npy", product_ids)
 np.save(MODELS_DIR / "product_embeddings.npy", embeddings_norm)
 
@@ -218,7 +231,7 @@ print("✅  03_content_embeddings.py COMPLETE")
 print("=" * 60)
 print(f"  Products embedded: {len(products)}")
 print(f"  Embedding method:  TF-IDF (max_features=500, ngram_range=(1,2))")
-print(f"  FAISS index type:  IndexFlatIP (exact cosine similarity)")
+print(f"  Search backend:    {'FAISS IndexFlatIP' if index is not None else 'NumPy exact cosine'}")
 print(f"  Artifacts saved:   {MODELS_DIR}")
 print()
 print("  Next steps:")
