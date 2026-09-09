@@ -2,7 +2,7 @@
 
 > A quick-commerce experience that understands what a customer is trying to accomplish, not just what they typed.
 
-[![CI/CD](https://github.com/chapranishika/instantdeliverycloneapp/actions/workflows/ci.yml/badge.svg)](https://github.com/chapranishika/instantdeliverycloneapp/actions)
+[![CI/CD](https://github.com/chapranishika/zepto-intelligent-commerce/actions/workflows/ci.yml/badge.svg)](https://github.com/chapranishika/zepto-intelligent-commerce/actions)
 [![Python](https://img.shields.io/badge/Python-3.11-blue.svg)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111-green.svg)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-18-61dafb.svg)](https://reactjs.org)
