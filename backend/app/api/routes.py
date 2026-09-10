@@ -71,6 +71,11 @@ class ChatRequest(BaseModel):
     stream: bool = False
 
 
+class RecipeRequest(BaseModel):
+    ingredients: List[str]
+    cuisine: Optional[str] = None
+
+
 class CartItemIn(BaseModel):
     product_id: int
     quantity: int
@@ -545,18 +550,19 @@ async def ai_chat_stream(body: ChatRequest):
 
 @router.post("/ai/recipe", tags=["ai"], dependencies=[Depends(rate_limit("ai_chat", limit=10))])
 async def recipe_assistant(
-    ingredients: List[str],
-    cuisine: Optional[str] = None,
+    body: RecipeRequest,
     db: AsyncSession = Depends(get_db),
 ):
     """
     Generate a recipe from available ingredients.
     Then map required ingredients to Zepto products.
+
+    Body: {"ingredients": ["tomato", "onion"], "cuisine": "italian"}
     """
     assistant = get_assistant()
-    prompt = f"Give me a recipe using: {', '.join(ingredients)}"
-    if cuisine:
-        prompt += f" (cuisine: {cuisine})"
+    prompt = f"Give me a recipe using: {', '.join(body.ingredients)}"
+    if body.cuisine:
+        prompt += f" (cuisine: {body.cuisine})"
     prompt += "\n\nList the ingredients needed and which ones I can order from a grocery app."
 
     recipe_text = await assistant.chat([{"role": "user", "content": prompt}])
@@ -564,7 +570,7 @@ async def recipe_assistant(
     # Semantic search for mentioned ingredients
     cbf = get_cbf_engine()
     product_suggestions = []
-    for ingredient in ingredients[:5]:
+    for ingredient in body.ingredients[:5]:
         results = cbf.search_by_text(ingredient, n=3)
         ids = [r["product_id"] for r in results]
         products = await fetch_products_by_ids(ids, db)

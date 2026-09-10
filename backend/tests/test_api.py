@@ -244,6 +244,42 @@ async def test_ai_chat_stream_sends_error_event_on_upstream_failure(client: Asyn
     assert "data: [DONE]" not in body  # must not claim success after failing
 
 
+@pytest.mark.asyncio
+async def test_ai_recipe_accepts_json_body(client: AsyncClient):
+    """
+    /ai/recipe takes a JSON object body {"ingredients": [...], "cuisine": ...}
+    — the same shape as every other POST endpoint. It used to declare a bare
+    `ingredients: List[str]` (raw-array body) plus `cuisine` as a *query* param,
+    which no natural client would send.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    fake_assistant = type("FakeAssistant", (), {
+        "chat": AsyncMock(return_value="1. Chop tomato. 2. Done."),
+    })()
+    fake_cbf = type("FakeCBF", (), {
+        "search_by_text": staticmethod(lambda *a, **k: []),
+    })()
+
+    with patch("app.api.routes.get_assistant", return_value=fake_assistant), \
+         patch("app.api.routes.get_cbf_engine", return_value=fake_cbf):
+        resp = await client.post("/api/v1/ai/recipe", json={
+            "ingredients": ["tomato", "onion"],
+            "cuisine": "italian",
+        })
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "recipe" in data
+    assert data["suggested_products"] == []
+
+
+@pytest.mark.asyncio
+async def test_ai_recipe_rejects_missing_ingredients(client: AsyncClient):
+    resp = await client.post("/api/v1/ai/recipe", json={"cuisine": "thai"})
+    assert resp.status_code == 422
+
+
 # ── JWT verification internals (app/api/auth.py) ────────────────────────────────
 
 @pytest.mark.asyncio
