@@ -1716,6 +1716,64 @@ html, body, #root { width: 100%; min-width: 0; }
   .cat-product-grid, .search-grid { gap: 6px !important; padding-left: 8px; padding-right: 8px; }
 }
 
+/* ══════════════════════════════════════════════════════════════
+   DESKTOP CONTAINER ARCHITECTURE
+   Full-width chrome, one shared content rhythm, mobile nav only.
+   ══════════════════════════════════════════════════════════════ */
+.desktop-header { display: none; }
+.desktop-header-inner { width: calc(100% - 64px); max-width: 1500px; margin: 0 auto; }
+.home-main { width: calc(100% - 64px); max-width: 1500px; margin: 0 auto; }
+
+@media (min-width: 769px) {
+  .app-shell { width: 100%; max-width: none; margin: 0; background: #FAFAF8; border: 0; box-shadow: none; }
+  .app-content { width: 100%; padding-bottom: 0; }
+  .desktop-header { display: block; position: sticky; top: 0; z-index: 200; width: 100%; background: #101010; color: #fff; }
+  .desktop-header-inner { min-height: 70px; display: grid; grid-template-columns: auto auto minmax(240px, 1fr) auto auto auto; align-items: center; gap: 18px; }
+  .desktop-brand { display: flex; flex-direction: column; align-items: flex-start; color: #fff; text-align: left; }
+  .desktop-brand-mark { font-family: 'Syne',sans-serif; font-size: 22px; font-weight: 800; line-height: 1; }
+  .desktop-brand-caption { margin-top: 4px; color: rgba(255,255,255,.45); font-size: 9px; }
+  .desktop-location { display: flex; align-items: center; gap: 6px; color: rgba(255,255,255,.82); font-size: 11px; white-space: nowrap; }
+  .desktop-search { min-width: 0; height: 40px; display: flex; align-items: center; gap: 9px; padding: 0 13px; border: 1px solid rgba(255,255,255,.15); border-radius: 10px; background: rgba(255,255,255,.08); color: rgba(255,255,255,.56); font-size: 12px; text-align: left; }
+  .desktop-search > span { color: #c2a3ff; font-size: 20px; line-height: 1; }
+  .desktop-search kbd { margin-left: auto; padding: 3px 6px; border: 1px solid rgba(255,255,255,.14); border-radius: 5px; color: rgba(255,255,255,.4); font-size: 9px; }
+  .desktop-links { display: flex; align-items: center; gap: 4px; }
+  .desktop-links button { display: inline-flex; align-items: center; gap: 5px; padding: 8px 7px; border-radius: 8px; color: rgba(255,255,255,.58); font-size: 11px; white-space: nowrap; }
+  .desktop-links button:hover, .desktop-links button.active { background: rgba(128,37,251,.2); color: #fff; }
+  .desktop-icon-action, .desktop-cart-action { display: inline-flex; align-items: center; justify-content: center; gap: 7px; color: #fff; }
+  .desktop-icon-action { width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,.1); }
+  .desktop-cart-action { min-height: 36px; padding: 0 11px; border-radius: 9px; background: var(--pk); font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .desktop-cart-action b { min-width: 17px; padding: 2px 4px; border-radius: 6px; background: rgba(255,255,255,.22); font-size: 10px; }
+  .home-page > .topbar, .home-page > .search-bar-wrap { display: none; }
+  .bottom-nav { display: none !important; }
+  .hero-section { height: clamp(280px, 25vw, 390px); margin: 20px 0 0; border-radius: 16px; }
+  .hero-content { padding: 40px 46px; }
+  .hero-title { font-size: clamp(32px, 3.4vw, 54px); }
+  .cat-scroll-wrap { padding-left: 0; padding-right: 0; }
+  .cat-scroll { overflow: hidden; }
+  .intent-card { margin-left: 0; margin-right: 0; }
+  .promo-scroll { padding-left: 0; padding-right: 0; }
+  .rail-header { padding-left: 0; padding-right: 0; }
+  .rail-scroll { padding-left: 0; padding-right: 0; }
+  .dept-grid { padding-left: 0; padding-right: 0; grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .cat-product-grid, .search-grid, .wishlist-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+
+@media (min-width: 1500px) {
+  .desktop-header-inner, .home-main { width: calc(100% - 96px); }
+  .cat-product-grid, .search-grid, .wishlist-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1100px) and (min-width: 769px) {
+  .desktop-header-inner { width: calc(100% - 40px); grid-template-columns: auto minmax(180px, 1fr) auto auto; gap: 10px; }
+  .desktop-location, .desktop-links button:nth-child(-n+2), .desktop-icon-action { display: none; }
+  .home-main { width: calc(100% - 40px); }
+}
+
+@media (max-width: 768px) {
+  .desktop-header { display: none; }
+  .home-main { width: 100%; max-width: none; }
+}
+
 /* Final visual calibration for the reference layout. */
 @media (min-width: 768px) {
   .topbar { padding-left: 28px; padding-right: 28px; }

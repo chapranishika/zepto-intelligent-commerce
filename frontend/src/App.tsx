@@ -1,4 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { ChefHat, Grid2X2, Heart, Home, ShoppingBag, UserRound } from "lucide-react";
 import BottomNav         from "./components/layout/BottomNav";
 import HomePage          from "./pages/HomePage";
 import CategoryPage      from "./pages/CategoryPage";
@@ -12,6 +14,7 @@ import SearchPage        from "./pages/SearchPage";
 import ProfilePage       from "./pages/ProfilePage";
 import LoginPage         from "./pages/LoginPage";
 import { useUIStore }    from "./store";
+import { useCartStore }   from "./store";
 import "./styles.css";
 
 function ToastStack() {
@@ -38,10 +41,50 @@ function SignatureFooter() {
   );
 }
 
+function DesktopHeader() {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const totalItems = useCartStore((state) => state.totalItems());
+  const links = [
+    ["/home", "Home", Home], ["/category", "Categories", Grid2X2],
+    ["/cook", "Cook", ChefHat], ["/profile", "Profile", UserRound],
+  ] as const;
+
+  return (
+    <header className="desktop-header">
+      <div className="desktop-header-inner">
+        <button className="desktop-brand" onClick={() => navigate("/home")} aria-label="Zepto home">
+          <span className="desktop-brand-mark">zepto</span>
+          <span className="desktop-brand-caption">good food, faster</span>
+        </button>
+        <button className="desktop-location" aria-label="Change delivery location">
+          <span className="dot-green" /> Delivering to Mumbai <span>⌄</span>
+        </button>
+        <button className="desktop-search" onClick={() => navigate("/search")}>
+          <span>⌕</span> Search groceries, recipes, dishes &amp; more…
+          <kbd>⌘ K</kbd>
+        </button>
+        <nav className="desktop-links" aria-label="Primary navigation">
+          {links.map(([path, label, Icon]) => (
+            <button key={path} className={pathname.startsWith(path) || (path === "/cook" && pathname.startsWith("/ai")) ? "active" : ""} onClick={() => navigate(path)}>
+              <Icon size={16} strokeWidth={2} /> {label}
+            </button>
+          ))}
+        </nav>
+        <button className="desktop-icon-action" onClick={() => navigate("/profile")} aria-label="Saved products"><Heart size={17} /></button>
+        <button className="desktop-cart-action" onClick={() => navigate("/cart")} aria-label="Open cart">
+          <ShoppingBag size={17} /> Cart {totalItems > 0 && <b>{totalItems}</b>}
+        </button>
+      </div>
+    </header>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <div className="app-shell">
+        <DesktopHeader />
         <div className="app-content">
           <Routes>
             <Route path="/"              element={<Navigate to="/home" replace />} />
