@@ -335,6 +335,83 @@ async def test_get_current_user_optional_returns_none_instead_of_raising():
     assert await get_current_user_optional(authorization="Bearer garbage") is None
 
 
+def _es256_keypair_and_jwk(kid: str):
+    """(private PEM, public JWK dict) for signing/verifying an ES256 test token."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from jose import jwk
+
+    priv = ec.generate_private_key(ec.SECP256R1())
+    priv_pem = priv.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode()
+    pub_pem = priv.public_key().public_bytes(
+        serialization.Encoding.PEM,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode()
+    pub_jwk = jwk.construct(pub_pem, "ES256").to_dict()
+    pub_jwk["kid"] = kid
+    return priv_pem, pub_jwk
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_accepts_es256_via_jwks(monkeypatch):
+    """
+    Supabase migrated this project to asymmetric (ES256) signing keys. An
+    ES256 token whose `kid` resolves in the project's JWKS must verify.
+    """
+    import time
+
+    from jose import jwt as jose_jwt
+
+    from app.api import auth
+    from app.api.auth import get_current_user
+
+    priv_pem, pub_jwk = _es256_keypair_and_jwk("test-ec-kid")
+    monkeypatch.setattr(auth, "SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.setattr(auth, "_jwks_cache", {"test-ec-kid": pub_jwk})
+    monkeypatch.setattr(auth, "_jwks_fetched_at", time.time())
+
+    token = jose_jwt.encode(
+        {"sub": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "aud": "authenticated",
+         "email": "u@example.com"},
+        priv_pem, algorithm="ES256", headers={"kid": "test-ec-kid"},
+    )
+    user = await get_current_user(authorization=f"Bearer {token}")
+    assert user.id == "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+    assert user.email == "u@example.com"
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_rejects_es256_unknown_kid(monkeypatch):
+    import time
+
+    from jose import jwt as jose_jwt
+
+    from app.api import auth
+    from app.api.auth import get_current_user
+    from fastapi import HTTPException
+
+    priv_pem, _ = _es256_keypair_and_jwk("real-kid")
+    monkeypatch.setattr(auth, "SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.setattr(auth, "_jwks_cache", {})  # kid won't be found
+    monkeypatch.setattr(auth, "_jwks_fetched_at", time.time())
+
+    async def _no_network():
+        return None
+    monkeypatch.setattr(auth, "_refresh_jwks", _no_network)
+
+    token = jose_jwt.encode(
+        {"sub": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "aud": "authenticated"},
+        priv_pem, algorithm="ES256", headers={"kid": "some-other-kid"},
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        await get_current_user(authorization=f"Bearer {token}")
+    assert exc_info.value.status_code == 401
+
+
 # ── Authorization (Phase 0: Supabase JWT verification) ─────────────────────────
 
 @pytest.mark.asyncio
