@@ -1,0 +1,91 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  frontend:
+    name: Frontend — TypeScript + Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build
+
+  backend:
+    name: Backend — Python + Tests
+    runs-on: ubuntu-latest
+    # These services were provisioned from the start but sat unused — the
+    # main suite (test_api.py) runs against an in-memory SQLite regardless
+    # of DATABASE_URL (see conftest.py) for speed. tests/test_postgres_integration.py
+    # is what actually exercises this Postgres service: it applies the real
+    # Alembic migration chain from scratch and tests the place_order RPC +
+    # RLS directly, none of which SQLite can express. It self-skips if
+    # DATABASE_URL doesn't point at Postgres, which is exactly what makes
+    # it run here (DATABASE_URL below) and skip in a plain local `pytest`.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: zepto_test
+          POSTGRES_USER: zepto
+          POSTGRES_PASSWORD: zepto
+        ports: [5432:5432]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports: [6379:6379]
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pip install pytest pytest-asyncio httpx
+      - run: pytest tests/ -v
+        env:
+          DATABASE_URL: postgresql+asyncpg://zepto:zepto@localhost:5432/zepto_test
+          REDIS_URL: redis://localhost:6379
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_JWT_SECRET: test-supabase-jwt-secret
+
+  deploy-frontend:
+    name: Deploy → Vercel
+    needs: frontend
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci && npm run build
+      - run: npx vercel --prod --token ${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
