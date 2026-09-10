@@ -84,7 +84,13 @@ jobs:
         with:
           node-version: 20
       - run: npm ci && npm run build
-      - run: npx vercel --prod --token ${{ secrets.VERCEL_TOKEN }}
+      - name: Deploy to Vercel
+        run: |
+          if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
+            echo "::notice::VERCEL_TOKEN not set — skipping CI deploy. Add VERCEL_TOKEN / VERCEL_ORG_ID / VERCEL_PROJECT_ID as repo Actions secrets, or delete this job if you deploy via Vercel's Git integration."
+            exit 0
+          fi
+          npx vercel --prod --token "${{ secrets.VERCEL_TOKEN }}"
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
