@@ -31,6 +31,9 @@ python-dotenv==1.0.1
 tqdm==4.66.4
 celery==5.4.0
 
+# ── Test ──────────────────────────────────────────────────────────────────────
+aiosqlite==0.22.1        # async SQLite driver for tests/conftest.py in-memory DB
+
 # ── Optional (upgrade paths, not required to run) ─────────────────────────────
 # implicit==0.7.2          # ALS CF — swap in for TruncatedSVD (see 02_collaborative_filtering.py)
 # sentence-transformers==3.0.1  # richer embeddings (see 03_content_embeddings.py)
