@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getById, PRODUCTS, discPct } from "../lib/products";
 import { useCartStore, useWishlistStore, useUIStore } from "../store";
-import { useSimilarProducts } from "../hooks";
+import { useSimilarProducts, useEventTracker } from "../hooks";
 import RecommendationRail from "../components/ui/RecommendationRail";
 
 export default function ProductPage() {
@@ -13,6 +13,7 @@ export default function ProductPage() {
   const { addItem, items } = useCartStore();
   const { toggle, has }    = useWishlistStore();
   const addToast           = useUIStore((s) => s.addToast);
+  const { trackView }      = useEventTracker();
 
   const [imgLoaded, setImgLoaded] = useState(false);
   const [qty, setQty]             = useState(1);
@@ -21,6 +22,11 @@ export default function ProductPage() {
   // the hook itself no-ops for negative ids.
   const { data: similarFromAPI, fromAPI: similarFromAPIFlag } =
     useSimilarProducts(p?.id ?? -1, 8);
+
+  useEffect(() => {
+    if (p) trackView(p.id, "product");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p?.id]);
 
   if (!p) {
     return (

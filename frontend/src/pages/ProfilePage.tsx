@@ -203,9 +203,10 @@ export default function ProfilePage() {
           {isLoggedIn() && (
             <button
               className="logout-btn"
-              onClick={() => {
-                logout();
+              onClick={async () => {
+                await logout();
                 addToast("Signed out — see you soon!");
+                navigate("/home");
               }}
             >
               Sign out

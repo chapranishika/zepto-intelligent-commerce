@@ -8,6 +8,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { PRODUCTS, PROMO_CODES, type Product } from "../lib/products";
+import { signOut } from "../lib/supabase";
 
 // ── Cart ──────────────────────────────────────────────────────────────────────
 
@@ -128,18 +129,27 @@ export const useWishlistStore = create<WishlistStore>()(
 );
 
 // ── User ──────────────────────────────────────────────────────────────────────
+//
+// `user` mirrors the real Supabase Auth session — see App.tsx, which calls
+// setUser() from getSession() on mount and subscribes via onAuthChange() to
+// keep it in sync (login, logout, token refresh, signing out in another
+// tab). It is intentionally NOT persisted to localStorage: trusting a
+// locally-cached identity across a real sign-out elsewhere would recreate
+// the exact "fake auth" problem this replaced. `sessionId` is unrelated —
+// it's a local anonymous id used for pre-login event tracking and is safe
+// to persist.
 
-interface User {
-  name: string;
+interface AuthUser {
+  id: string;
   email: string;
-  phone?: string;
+  name: string;
 }
 
 interface UserStore {
-  user: User | null;
+  user: AuthUser | null;
   sessionId: string;
-  login: (u: User) => void;
-  logout: () => void;
+  setUser: (u: AuthUser | null) => void;
+  logout: () => Promise<void>;
   isLoggedIn: () => boolean;
 }
 
@@ -151,11 +161,18 @@ export const useUserStore = create<UserStore>()(
     (set, get) => ({
       user: null,
       sessionId: genSession(),
-      login: (u) => set({ user: u }),
-      logout: () => set({ user: null }),
+      setUser: (user) => set({ user }),
+      logout: async () => {
+        await signOut();
+        set({ user: null });
+      },
       isLoggedIn: () => get().user !== null,
     }),
-    { name: "zepto-user", storage: createJSONStorage(() => localStorage) }
+    {
+      name: "zepto-user",
+      storage: createJSONStorage(() => localStorage),
+      partialize: (s) => ({ sessionId: s.sessionId }),
+    }
   )
 );
 

@@ -6,21 +6,21 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query
+import httpx
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import hash_password, verify_password, create_access_token
+from app.api.auth import CurrentUser, get_current_user, get_current_user_optional
+from app.api.rate_limit import rate_limit
 from app.db.database import cache_get, cache_set, get_db
 from app.ml.collaborative.cf_engine import get_cf_engine
 from app.ml.content.cbf_engine import get_cbf_engine
 from app.ml.llm.gopi_bahu import get_assistant
 from app.ml.ranker.hybrid_ranker import get_ranker
-from app.models.db_models import (
-    Order, OrderItem, Product, PromoCode, User, UserEvent, WishlistItem,
-)
+from app.models.db_models import Department, Product, UserEvent, WishlistItem
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -52,7 +52,7 @@ class RecommendationOut(BaseModel):
 
 
 class EventIn(BaseModel):
-    user_id: Optional[int] = None    # None = anonymous session (tracked via session_id)
+    user_id: Optional[str] = None    # None = anonymous session (tracked via session_id)
     product_id: Optional[int] = None
     event_type: str   # view|click|add_to_cart|purchase|search
     query: Optional[str] = None
@@ -67,27 +67,18 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
-    user_id: Optional[int] = None
+    user_id: Optional[str] = None
     stream: bool = False
+
+
+class RecipeRequest(BaseModel):
+    ingredients: List[str]
+    cuisine: Optional[str] = None
 
 
 class CartItemIn(BaseModel):
     product_id: int
     quantity: int
-
-
-class CheckoutIn(BaseModel):
-    user_id: Optional[int] = None
-    cart_items: List[CartItemIn]
-    delivery_address: str
-    promo_code: Optional[str] = None
-
-
-class RegisterIn(BaseModel):
-    email: EmailStr
-    password: str
-    name: str
-    phone: Optional[str] = None
 
 
 class SearchOut(BaseModel):
@@ -134,75 +125,10 @@ async def fetch_products_by_ids(
 
 
 # ═══════════════════════════════════════════════════════════════════
-# Auth (simplified — use JWT in production)
+# Auth — handled entirely by Supabase Auth on the frontend (supabase-js).
+# This backend only verifies the resulting JWT (see app/api/auth.py) on
+# endpoints that need to know who's calling; it never issues credentials.
 # ═══════════════════════════════════════════════════════════════════
-
-class LoginIn(BaseModel):
-    email: EmailStr
-    password: str
-
-
-@router.post("/auth/register", tags=["auth"])
-async def register(body: RegisterIn, db: AsyncSession = Depends(get_db)):
-    existing = await db.execute(select(User).where(User.email == body.email))
-    if existing.scalar_one_or_none():
-        raise HTTPException(400, "Email already registered")
-    if len(body.password) < 8:
-        raise HTTPException(422, "Password must be at least 8 characters")
-    user = User(
-        email=body.email,
-        hashed_password=hash_password(body.password),   # bcrypt — not sha256
-        name=body.name,
-        phone=body.phone,
-    )
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-    token = create_access_token({"sub": str(user.id), "email": user.email})
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "user_id": user.id,
-        "name": user.name,
-        "email": user.email,
-    }
-
-
-@router.post("/auth/login", tags=["auth"])
-async def login(body: LoginIn, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == body.email))
-    user = result.scalar_one_or_none()
-    # verify_password uses bcrypt timing-safe comparison
-    if not user or not verify_password(body.password, user.hashed_password):
-        raise HTTPException(401, "Invalid credentials")
-    token = create_access_token({"sub": str(user.id), "email": user.email})
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "user_id": user.id,
-        "name": user.name,
-        "email": user.email,
-    }
-
-
-@router.get("/auth/me", tags=["auth"])
-async def get_me(
-    authorization: Optional[str] = Header(default=None, alias="Authorization"),
-    db: AsyncSession = Depends(get_db),
-):
-    """Return current user from Bearer token in Authorization header."""
-    from app.core.security import get_user_id_from_token
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(401, "Missing or invalid Authorization header")
-    token = authorization.split(" ", 1)[1]
-    user_id = get_user_id_from_token(token)
-    if not user_id:
-        raise HTTPException(401, "Invalid or expired token")
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(404, "User not found")
-    return {"user_id": user.id, "name": user.name, "email": user.email, "phone": user.phone}
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -218,7 +144,6 @@ async def list_products(
 ):
     q = select(Product).where(Product.is_available == True)
     if department:
-        from app.models.db_models import Department
         dept_result = await db.execute(select(Department).where(Department.name == department))
         dept = dept_result.scalar_one_or_none()
         if dept:
@@ -271,19 +196,67 @@ async def similar_products(
 # Recommendations — the ML heart of the system
 # ═══════════════════════════════════════════════════════════════════
 
+async def _top_department_for(
+    db: AsyncSession, current_user: Optional[CurrentUser], session_id: str
+) -> Optional[str]:
+    """
+    Department the caller has engaged with most, from their own event
+    history (by user_id when signed in, by session_id otherwise) — falling
+    back to the single most-viewed department overall for a brand-new
+    visitor with no history yet. Never a hardcoded guess: the CBF half of
+    /recommend previously always queried a fixed "produce" category, which
+    isn't even one of this app's real department names, so it silently
+    returned nothing for every request.
+    """
+    from sqlalchemy import func
+
+    base = (
+        select(Department.name, func.count(UserEvent.id).label("cnt"))
+        .join(Product, Product.id == UserEvent.product_id)
+        .join(Department, Department.id == Product.department_id)
+    )
+
+    if current_user:
+        q = base.where(UserEvent.user_id == current_user.id)
+    else:
+        q = base.where(UserEvent.session_id == session_id)
+    q = q.group_by(Department.name).order_by(func.count(UserEvent.id).desc()).limit(1)
+
+    row = (await db.execute(q)).first()
+    if row:
+        return row[0]
+
+    # Cold start: no history for this caller — use the site-wide top
+    # department rather than an arbitrary/invalid default.
+    global_row = (
+        await db.execute(
+            base.group_by(Department.name).order_by(func.count(UserEvent.id).desc()).limit(1)
+        )
+    ).first()
+    return global_row[0] if global_row else None
+
 @router.get("/recommend/{user_id}", tags=["recommendations"])
 async def recommend(
     user_id: str,       # str so anonymous session IDs (e.g. "abc-123") work too
     n: int = Query(20, le=50),
     exclude: Optional[str] = None,    # comma-separated product ids to exclude
     context: Optional[str] = None,    # json context string
+    current_user: Optional[CurrentUser] = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Main personalised recommendation endpoint.
     Runs CF + CBF → hybrid LightGBM ranker → returns ranked product list.
     Results are Redis-cached per user for 5 minutes.
+
+    If the caller sends a valid Supabase auth token, user_id must match the
+    token's subject — a signed-in user can only fetch their own
+    recommendations. Anonymous (no token) calls still work with a
+    client-generated session id, as before.
     """
+    if current_user and user_id != current_user.id:
+        raise HTTPException(403, "user_id does not match the authenticated user")
+
     cache_key = f"rec:{user_id}:{n}"
     cached = await cache_get(cache_key)
     if cached:
@@ -304,8 +277,10 @@ async def recommend(
     ranker = get_ranker()
 
     # Run both retrieval towers
-    cf_candidates  = cf.get_user_recommendations(user_id, n=n * 2, exclude_product_ids=exclude_ids)
-    cbf_candidates = cbf.get_category_products("produce", n=n)  # personalise dept in future
+    cf_candidates = cf.get_user_recommendations(user_id, n=n * 2, exclude_product_ids=exclude_ids)
+
+    top_dept = await _top_department_for(db, current_user, session_id=user_id)
+    cbf_candidates = cbf.get_category_products(top_dept, n=n) if top_dept else []
 
     # Hybrid re-rank
     ranked = ranker.rank(user_id, cf_candidates, cbf_candidates, context=ctx)
@@ -392,7 +367,7 @@ async def upsell(
 # Search
 # ═══════════════════════════════════════════════════════════════════
 
-@router.get("/search", tags=["search"])
+@router.get("/search", tags=["search"], dependencies=[Depends(rate_limit("search", limit=30))])
 async def search(
     q: str = Query(..., min_length=1),
     user_id: Optional[int] = None,
@@ -472,67 +447,13 @@ async def validate_cart(
     return {"items": validated}
 
 
-@router.post("/checkout", tags=["cart"])
-async def checkout(body: CheckoutIn, db: AsyncSession = Depends(get_db)):
-    """Create an order from cart contents. Applies promo code if valid."""
-    # Calculate total
-    ids = [i.product_id for i in body.cart_items]
-    result = await db.execute(select(Product).where(Product.id.in_(ids)))
-    products = {p.id: p for p in result.scalars().all()}
-
-    total = sum(
-        products[i.product_id].price * i.quantity
-        for i in body.cart_items
-        if i.product_id in products
-    )
-    discount = 0.0
-
-    # Promo code
-    if body.promo_code:
-        promo_result = await db.execute(
-            select(PromoCode).where(
-                PromoCode.code == body.promo_code,
-                PromoCode.is_active == True,
-            )
-        )
-        promo = promo_result.scalar_one_or_none()
-        if promo and total >= promo.min_order_value:
-            if promo.discount_type == "percentage":
-                discount = total * promo.discount_value / 100
-            else:
-                discount = promo.discount_value
-            if promo.max_discount:
-                discount = min(discount, promo.max_discount)
-            promo.usage_count += 1
-
-    order = Order(
-        user_id=body.user_id,
-        total_amount=round(total - discount, 2),
-        delivery_address=body.delivery_address,
-        promo_code=body.promo_code,
-        discount=round(discount, 2),
-        status="confirmed",
-    )
-    db.add(order)
-    await db.flush()
-
-    for item in body.cart_items:
-        if item.product_id in products:
-            db.add(OrderItem(
-                order_id=order.id,
-                product_id=item.product_id,
-                quantity=item.quantity,
-                unit_price=products[item.product_id].price,
-            ))
-
-    await db.commit()
-    return {
-        "order_id": order.id,
-        "status": "confirmed",
-        "total": order.total_amount,
-        "discount": discount,
-        "estimated_delivery": "10 minutes",
-    }
+# Order placement lives entirely in Supabase now — see the `place_order`
+# Postgres RPC (backend/alembic/versions/004_place_order_rpc.py), called
+# directly by the frontend via supabase.rpc(). It's SECURITY DEFINER,
+# re-validates prices/stock/promo server-side under row locks, and takes
+# the user id from auth.uid() — none of which a second, parallel FastAPI
+# implementation could do without duplicating (and inevitably drifting
+# from) that logic. There is deliberately no /checkout route here anymore.
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -543,20 +464,24 @@ async def checkout(body: CheckoutIn, db: AsyncSession = Depends(get_db)):
 async def track_event(
     event: EventIn,
     background_tasks: BackgroundTasks,
+    current_user: Optional[CurrentUser] = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Log a user behavioural event.
 
-    user_id is optional — anonymous sessions are tracked via session_id alone.
-    This is the standard pattern: log events first, attribute to user if they
-    later sign in. Invalidates recommendation cache in background.
+    The event's user_id is never taken from the request body as-is — a
+    client could otherwise log fake "purchase" events against someone
+    else's account. If a valid auth token is present, its subject is used;
+    otherwise the event is logged as anonymous (tracked via session_id),
+    even if the body claims a user_id.
     """
+    effective_user_id = current_user.id if current_user else None
     ranker = get_ranker()
-    ab_variant = ranker.get_ab_variant(event.user_id) if event.user_id else "control"
+    ab_variant = ranker.get_ab_variant(effective_user_id) if effective_user_id else "control"
 
     db_event = UserEvent(
-        user_id=event.user_id,       # nullable — OK for anonymous sessions
+        user_id=effective_user_id,   # nullable — OK for anonymous sessions
         product_id=event.product_id,
         event_type=event.event_type,
         query=event.query,
@@ -568,9 +493,9 @@ async def track_event(
     await db.commit()
 
     # Invalidate user recommendation cache only for logged-in users
-    if event.user_id and event.event_type in ("purchase", "add_to_cart"):
+    if effective_user_id and event.event_type in ("purchase", "add_to_cart"):
         from app.db.database import cache_delete
-        background_tasks.add_task(cache_delete, f"rec:{event.user_id}:20")
+        background_tasks.add_task(cache_delete, f"rec:{effective_user_id}:20")
 
     return {"status": "logged"}
 
@@ -579,43 +504,65 @@ async def track_event(
 # AI Assistant (Gopi Bahu)
 # ═══════════════════════════════════════════════════════════════════
 
-@router.post("/ai/chat", tags=["ai"])
+@router.post("/ai/chat", tags=["ai"], dependencies=[Depends(rate_limit("ai_chat", limit=10))])
 async def ai_chat(body: ChatRequest):
     """Standard (non-streaming) AI chat."""
     assistant = get_assistant()
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
-    reply = await assistant.chat(messages)
+    try:
+        reply = await assistant.chat(messages)
+    except httpx.HTTPError as exc:
+        logger.warning(f"Gopi Bahu chat failed: {exc}")
+        raise HTTPException(502, "AI assistant is temporarily unavailable")
     return {"reply": reply, "role": "assistant"}
 
 
-@router.post("/ai/chat/stream", tags=["ai"])
+@router.post("/ai/chat/stream", tags=["ai"], dependencies=[Depends(rate_limit("ai_chat", limit=10))])
 async def ai_chat_stream(body: ChatRequest):
     """Streaming AI chat — returns Server-Sent Events."""
     assistant = get_assistant()
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
 
     async def event_generator():
-        async for chunk in assistant.chat_stream(messages):
-            yield f"data: {chunk}\n\n"
+        try:
+            async for chunk in assistant.chat_stream(messages):
+                # SSE terminates an event on a blank line, so a chunk that
+                # itself contains "\n\n" (e.g. a markdown paragraph break
+                # from Claude) must be sent as multiple `data:` lines
+                # within one event, per the SSE spec — not as one line
+                # with raw embedded newlines.
+                for part in chunk.split("\n"):
+                    yield f"data: {part}\n"
+                yield "\n"
+        except httpx.HTTPError as exc:
+            # A failure mid-stream (e.g. Anthropic API error) must not
+            # just silently truncate the stream — the client would render
+            # a half-finished message with no indication anything went
+            # wrong. A distinct `event: error` block lets the frontend
+            # detect this and show a real offline state instead.
+            logger.warning(f"Gopi Bahu stream failed: {exc}")
+            yield f"event: error\ndata: {exc}\n\n"
+            return
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@router.post("/ai/recipe", tags=["ai"])
+@router.post("/ai/recipe", tags=["ai"], dependencies=[Depends(rate_limit("ai_chat", limit=10))])
 async def recipe_assistant(
-    ingredients: List[str],
-    cuisine: Optional[str] = None,
+    body: RecipeRequest,
     db: AsyncSession = Depends(get_db),
 ):
     """
     Generate a recipe from available ingredients.
     Then map required ingredients to Zepto products.
+
+    Body: {"ingredients": ["tomato", "onion"], "cuisine": "italian"}
     """
     assistant = get_assistant()
-    prompt = f"Give me a recipe using: {', '.join(ingredients)}"
-    if cuisine:
-        prompt += f" (cuisine: {cuisine})"
+    prompt = f"Give me a recipe using: {', '.join(body.ingredients)}"
+    if body.cuisine:
+        prompt += f" (cuisine: {body.cuisine})"
     prompt += "\n\nList the ingredients needed and which ones I can order from a grocery app."
 
     recipe_text = await assistant.chat([{"role": "user", "content": prompt}])
@@ -623,7 +570,7 @@ async def recipe_assistant(
     # Semantic search for mentioned ingredients
     cbf = get_cbf_engine()
     product_suggestions = []
-    for ingredient in ingredients[:5]:
+    for ingredient in body.ingredients[:5]:
         results = cbf.search_by_text(ingredient, n=3)
         ids = [r["product_id"] for r in results]
         products = await fetch_products_by_ids(ids, db)
@@ -644,8 +591,18 @@ async def recipe_assistant(
 # Wishlist
 # ═══════════════════════════════════════════════════════════════════
 
+def _require_self(user_id: str, current_user: CurrentUser) -> None:
+    if user_id != current_user.id:
+        raise HTTPException(403, "user_id does not match the authenticated user")
+
+
 @router.get("/wishlist/{user_id}", tags=["wishlist"])
-async def get_wishlist(user_id: int, db: AsyncSession = Depends(get_db)):
+async def get_wishlist(
+    user_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_self(user_id, current_user)
     result = await db.execute(
         select(WishlistItem).where(WishlistItem.user_id == user_id)
     )
@@ -657,8 +614,12 @@ async def get_wishlist(user_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("/wishlist/{user_id}/{product_id}", tags=["wishlist"])
 async def add_to_wishlist(
-    user_id: int, product_id: int, db: AsyncSession = Depends(get_db)
+    user_id: str,
+    product_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
+    _require_self(user_id, current_user)
     existing = await db.execute(
         select(WishlistItem).where(
             WishlistItem.user_id == user_id,
@@ -674,8 +635,12 @@ async def add_to_wishlist(
 
 @router.delete("/wishlist/{user_id}/{product_id}", tags=["wishlist"])
 async def remove_from_wishlist(
-    user_id: int, product_id: int, db: AsyncSession = Depends(get_db)
+    user_id: str,
+    product_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
+    _require_self(user_id, current_user)
     result = await db.execute(
         select(WishlistItem).where(
             WishlistItem.user_id == user_id,

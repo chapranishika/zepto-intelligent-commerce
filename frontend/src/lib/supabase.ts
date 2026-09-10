@@ -15,7 +15,8 @@
  *  - Frontend supabase-js → public schema with RLS enforced
  *  - Backend FastAPI/asyncpg → same tables, bypasses RLS via service role
  */
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type Session } from "@supabase/supabase-js";
+import { getById } from "./products";
 
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL  as string;
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -107,20 +108,64 @@ export const getSession = async () => {
   return session;
 };
 
+// Subscribe to auth state changes (sign in/out, token refresh, other tabs).
+// Returns an unsubscribe function — call it on unmount.
+export const onAuthChange = (cb: (session: Session | null) => void) => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    (_event, session) => cb(session)
+  );
+  return () => subscription.unsubscribe();
+};
+
+// Access token for calling the FastAPI backend as the signed-in user.
+export const getAccessToken = async (): Promise<string | null> => {
+  const session = await getSession();
+  return session?.access_token ?? null;
+};
+
 // ── Product queries ───────────────────────────────────────────────────────────
 
-export const fetchProducts = async (departmentId?: number) => {
+// The rest of the app thinks in department *names* ("Fresh Fruits"), never
+// numeric ids — CATEGORIES, ProductCard, etc. all use the name. `!inner`
+// makes department a required join so filtering on departments.name works;
+// harmless when no name filter is applied.
+export const fetchProducts = async (departmentName?: string, limit = 60) => {
   let q = supabase
     .from("products")
-    .select("*, departments(name)")
+    .select("*, departments!inner(name)")
     .eq("is_available", true)
-    .order("rating_count", { ascending: false });
+    .order("rating_count", { ascending: false })
+    .limit(limit);
 
-  if (departmentId !== undefined) {
-    q = q.eq("department_id", departmentId);
+  if (departmentName) {
+    q = q.eq("departments.name", departmentName);
   }
   const { data, error } = await q;
-  return { data: data as (DBProduct & { departments: { name: string } })[], error };
+  return { data: data as (DBProduct & { departments: { name: string } })[] | null, error };
+};
+
+// Maps a live Supabase product row onto the frontend's Product shape (same
+// fields the local catalogue in lib/products.ts uses). country/description
+// aren't columns in the live table — filled from the local catalogue when
+// the id happens to match, same fallback pattern used for backend-sourced
+// products in hooks/index.ts's mapBackendProduct.
+export const mapDBProduct = (
+  dbp: DBProduct & { departments?: { name: string } | null }
+) => {
+  const local = getById(dbp.id);
+  return {
+    id: dbp.id,
+    name: dbp.name,
+    unit: dbp.quantity_label ?? local?.unit ?? "",
+    type: dbp.departments?.name ?? dbp.aisle ?? local?.type ?? "",
+    price: dbp.mrp ?? local?.price ?? dbp.price,
+    disc: dbp.price,
+    src: dbp.image_url ?? local?.src ?? "",
+    quantity: 0,
+    rating: dbp.rating,
+    country: local?.country ?? "India",
+    description: local?.description ?? "",
+  };
 };
 
 export const fetchProductById = async (id: number) => {

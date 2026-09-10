@@ -21,12 +21,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useUserStore } from "../store";
 import { getById, type Product } from "../lib/products";
+import { getAccessToken } from "../lib/supabase";
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v1";
+export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v1";
 const TIMEOUT_MS = 2000;
 
 // ── Backend response shapes ───────────────────────────────────────────────────
-interface BackendProduct {
+export interface BackendProduct {
   id: number;
   name: string;
   price: number;          // discounted price customer pays
@@ -45,8 +46,14 @@ interface RecommendationResponse {
   ab_variant?: string;
 }
 
+export interface SearchResponse {
+  products: BackendProduct[];
+  query_expanded: string[];
+  total: number;
+}
+
 // ── Map backend → frontend Product shape ──────────────────────────────────────
-function mapBackendProduct(bp: BackendProduct): Product {
+export function mapBackendProduct(bp: BackendProduct): Product {
   // If this product id exists in our local catalogue, use it as the base
   // (gives us description, country, etc. for free) and overlay live fields.
   const local = getById(bp.id);
@@ -67,11 +74,12 @@ function mapBackendProduct(bp: BackendProduct): Product {
 }
 
 // ── Typed fetch with timeout ──────────────────────────────────────────────────
-async function apiFetch<T>(path: string): Promise<T | null> {
+export async function apiFetch<T>(path: string, token?: string | null): Promise<T | null> {
   const controller = new AbortController();
   const tid = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(`${API_BASE}${path}`, { signal: controller.signal });
+    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+    const res = await fetch(`${API_BASE}${path}`, { signal: controller.signal, headers });
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch {
@@ -83,30 +91,43 @@ async function apiFetch<T>(path: string): Promise<T | null> {
 
 // ── Event tracker ─────────────────────────────────────────────────────────────
 export function useEventTracker() {
-  const { sessionId } = useUserStore();
+  const { user, sessionId } = useUserStore();
 
   const track = useCallback(
-    (eventType: "click" | "view" | "add_to_cart" | "purchase", productId: number) => {
+    async (
+      eventType: "click" | "view" | "add_to_cart" | "purchase",
+      productId: number,
+      page?: string
+    ) => {
+      // Attach the auth token when signed in so the event is attributed to
+      // a real user (and feeds their CF training data) instead of only the
+      // anonymous session — the backend verifies this, it never trusts a
+      // client-claimed user_id.
+      const token = user ? await getAccessToken() : null;
       // Fire-and-forget — never blocks UI, errors are expected when backend is offline
       fetch(`${API_BASE}/events`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           session_id: sessionId,
           event_type: eventType,
           product_id: productId,
+          page,
           timestamp: new Date().toISOString(),
         }),
       }).catch(() => {/* backend offline — acceptable for tracking */});
     },
-    [sessionId]
+    [sessionId, user]
   );
 
   return {
-    trackClick:     (id: number) => track("click", id),
-    trackView:      (id: number) => track("view", id),
-    trackAddToCart: (id: number) => track("add_to_cart", id),
-    trackPurchase:  (id: number) => track("purchase", id),
+    trackClick:     (id: number, page?: string) => track("click", id, page),
+    trackView:      (id: number, page?: string) => track("view", id, page),
+    trackAddToCart: (id: number, page?: string) => track("add_to_cart", id, page),
+    trackPurchase:  (id: number, page?: string) => track("purchase", id, page),
   };
 }
 
@@ -132,26 +153,29 @@ export function useRecommendations(
     let cancelled = false;
     setLoading(true);
 
-    const userId = user ? encodeURIComponent(user.email) : sessionId;
+    // Signed-in users are keyed by their real Supabase user id (matches the
+    // JWT `sub` the backend verifies against); signed-out users fall back to
+    // the anonymous session id.
+    const userId = user ? user.id : sessionId;
     const qs = new URLSearchParams({ n: String(params.n ?? 20) });
     if (params.type) qs.set("type", params.type);
 
-    apiFetch<RecommendationResponse>(`/recommend/${userId}?${qs}`)
-      .then((result) => {
-        if (cancelled) return;
-        if (result?.products?.length) {
-          setData(result.products.map(mapBackendProduct));
-          setFromAPI(true);
-        } else {
-          setFromAPI(false);
-        }
-        setError(null);
-      })
-      .catch((e) => { if (!cancelled) setError(String(e)); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+    (async () => {
+      const token = user ? await getAccessToken() : null;
+      const result = await apiFetch<RecommendationResponse>(`/recommend/${userId}?${qs}`, token);
+      if (cancelled) return;
+      if (result?.products?.length) {
+        setData(result.products.map(mapBackendProduct));
+        setFromAPI(true);
+      } else {
+        setFromAPI(false);
+      }
+      setError(null);
+      setLoading(false);
+    })().catch((e) => { if (!cancelled) { setError(String(e)); setLoading(false); } });
 
     return () => { cancelled = true; };
-  }, [sessionId, user?.email, params.n, params.type]);
+  }, [sessionId, user?.id, params.n, params.type]);
 
   return { data, loading, error, fromAPI };
 }

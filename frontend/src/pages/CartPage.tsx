@@ -1,48 +1,23 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useCartStore, useUIStore } from "../store";
-import { PROMO_CODES } from "../lib/products";
+import { useCartStore } from "../store";
 import RecommendationRail from "../components/ui/RecommendationRail";
-import { PRODUCTS, TRENDING_IDS, getById } from "../lib/products";
+import { TRENDING_IDS, getById } from "../lib/products";
 
 export default function CartPage() {
   const navigate   = useNavigate();
   const { items, updateQty, removeItem, clearCart, totalPrice, totalMRP, totalDiscount } = useCartStore();
-  const addToast   = useUIStore((s) => s.addToast);
 
-  const [promoInput, setPromoInput]   = useState("");
-  const [promoApplied, setPromoApplied] = useState<string | null>(null);
-  const [address, setAddress]         = useState("Flat 4B, Lotus Tower, Andheri West, Mumbai - 400053");
+  const sub   = totalPrice();
+  const mrp   = totalMRP();
+  const saved = totalDiscount();
+  const del   = sub >= 199 ? 0 : 25;
+  const total = sub + del;
 
-  const sub      = totalPrice();
-  const mrp      = totalMRP();
-  const saved    = totalDiscount();
-  const del      = sub >= 199 ? 0 : 25;
-
-  let promoDiscount = 0;
-  if (promoApplied && PROMO_CODES[promoApplied]) {
-    const pc = PROMO_CODES[promoApplied];
-    if (pc.type === "pct")      promoDiscount = Math.min(Math.round(sub * pc.val / 100), pc.max);
-    else if (pc.type === "flat") promoDiscount = Math.min(pc.val, sub);
-  }
-  const freeDelivery = promoApplied && PROMO_CODES[promoApplied]?.type === "free_del";
-  const total = sub + (freeDelivery ? 0 : del) - promoDiscount;
-
-  function handleApplyPromo() {
-    const code = promoInput.trim().toUpperCase();
-    if (PROMO_CODES[code]) {
-      setPromoApplied(code);
-      addToast(`${PROMO_CODES[code].label} applied! 🎉`);
-    } else {
-      addToast("Invalid promo code", "error");
-    }
-  }
-
+  // Address + promo code are chosen on the checkout page (which is also
+  // where the order is actually placed via the place_order RPC) — this is
+  // just a bill preview before getting there.
   function handleCheckout() {
-    clearCart();
-    const orderId = "ZPT" + Math.floor(10000 + Math.random() * 90000);
-    addToast(`Order #${orderId} confirmed! Arriving in 10 min 🛵`);
-    navigate("/home");
+    navigate("/checkout");
   }
 
   const upsell = TRENDING_IDS
@@ -132,66 +107,17 @@ export default function CartPage() {
           />
         )}
 
-        {/* Delivery address */}
-        <div className="cart-section">
-          <h3>📍 Delivery address</h3>
-          <input
-            className="address-input"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            placeholder="Enter delivery address"
-          />
-        </div>
-
-        {/* Promo code */}
-        <div className="cart-section">
-          <h3>🏷️ Promo code</h3>
-          {promoApplied ? (
-            <div className="promo-applied-row">
-              <div>
-                <p className="promo-code-label">{promoApplied}</p>
-                <p className="promo-code-sub">{PROMO_CODES[promoApplied]?.label}</p>
-              </div>
-              <button onClick={() => { setPromoApplied(null); setPromoInput(""); }}>
-                ✕ Remove
-              </button>
-            </div>
-          ) : (
-            <>
-              <div className="promo-row">
-                <input
-                  className="promo-input"
-                  value={promoInput}
-                  onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
-                  placeholder="Enter code (ZEPTO10, FLAT50, FRESH20)"
-                />
-                <button className="promo-apply-btn" onClick={handleApplyPromo}
-                  disabled={!promoInput}>Apply</button>
-              </div>
-              <div className="promo-chips">
-                {Object.keys(PROMO_CODES).map((code) => (
-                  <button key={code} className="promo-chip"
-                    onClick={() => { setPromoInput(code); }}>
-                    {code}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Bill summary */}
+        {/* Bill summary — a preview; address and promo code are chosen on
+            the next (checkout) screen, which is also where this total gets
+            recomputed authoritatively by the place_order RPC. */}
         <div className="bill-summary">
           <h3>💳 Bill summary</h3>
           <div className="bill-row"><span>MRP total</span><span>₹{mrp}</span></div>
           <div className="bill-row green"><span>Product discount</span><span>−₹{saved}</span></div>
           <div className="bill-row"><span>Delivery fee</span>
-            <span>{(del === 0 || freeDelivery) ? <span className="free-text">FREE ✓</span> : `₹${del}`}</span>
+            <span>{del === 0 ? <span className="free-text">FREE ✓</span> : `₹${del}`}</span>
           </div>
-          {promoDiscount > 0 && (
-            <div className="bill-row green"><span>Promo ({promoApplied})</span><span>−₹{promoDiscount}</span></div>
-          )}
-          {del > 0 && !freeDelivery && (
+          {del > 0 && (
             <p className="free-delivery-hint">Add ₹{199 - sub} more for free delivery</p>
           )}
           <div className="bill-row total"><span>Total</span><span>₹{total}</span></div>
@@ -204,11 +130,11 @@ export default function CartPage() {
         <div className="checkout-info">
           <span className="checkout-total">₹{total}</span>
           <span className="checkout-saved">
-            {saved + promoDiscount > 0 ? `Saved ₹${saved + promoDiscount}` : `${items.length} item${items.length > 1 ? "s" : ""}`}
+            {saved > 0 ? `Saved ₹${saved}` : `${items.length} item${items.length > 1 ? "s" : ""}`}
           </span>
         </div>
         <button className="checkout-btn" onClick={handleCheckout}>
-          Place order →
+          Continue →
         </button>
       </div>
     </div>

@@ -1,12 +1,17 @@
 /**
  * Checkout Page — 3 steps: Address → Payment → Confirm
  *
- * Uses useCheckoutStore which previously crashed due to require() in applyPromo.
- * Now fixed — PROMO_CODES imported at module level in store/index.ts.
+ * Places the order via the `place_order` Postgres RPC (see
+ * backend/alembic/versions/004_place_order_rpc.py) — an atomic,
+ * server-validated transaction, not a client-side fake. The client-side
+ * promo preview in useCheckoutStore is just that: a preview. The RPC
+ * recomputes price/stock/promo validity from the live database and is the
+ * authority on what the order actually costs.
  */
 import { useNavigate } from "react-router-dom";
-import { useCartStore, useCheckoutStore, useUIStore } from "../store";
+import { useCartStore, useCheckoutStore, useUIStore, useUserStore } from "../store";
 import { PROMO_CODES } from "../lib/products";
+import { supabase } from "../lib/supabase";
 import { useState } from "react";
 
 const ADDRESSES = [
@@ -34,6 +39,7 @@ type PayId = typeof PAY_METHODS[number]["id"];
 export default function CheckoutPage() {
   const navigate  = useNavigate();
   const addToast  = useUIStore((s) => s.addToast);
+  const user      = useUserStore((s) => s.user);
   const { items, totalPrice, totalMRP, totalDiscount, clearCart } = useCartStore();
 
   // ── Checkout store (ESM-safe now) ─────────────────────────────
@@ -64,19 +70,39 @@ export default function CheckoutPage() {
     if (step === "confirm")  { setStep("payment"); return; }
   }
 
-  function handleNext() {
+  async function handleNext() {
     if (step === "address")  { setStep("payment"); return; }
     if (step === "payment")  { setStep("confirm");  return; }
 
-    // Place order
+    // step === "confirm" — actually place the order.
+    if (!user) {
+      addToast("Please sign in to place an order", "error");
+      navigate("/login");
+      return;
+    }
+
     setPlacing(true);
-    const orderId = "ZPT" + Math.floor(10000 + Math.random() * 90000);
-    setTimeout(() => {
-      clearCart();
-      reset();
-      setPlacing(false);
-      navigate(`/success?orderId=${orderId}&total=${total}`);
-    }, 900);
+    const { data, error } = await supabase.rpc("place_order", {
+      p_cart: items.map(({ product, quantity }) => ({
+        product_id: product.id,
+        quantity,
+      })),
+      p_promo_code: promoApplied,
+      p_delivery_address: addr.text,
+      p_payment_method: selectedPayment,
+    });
+    setPlacing(false);
+
+    if (error) {
+      // e.g. out of stock, invalid/expired promo, not authenticated —
+      // all raised by place_order itself, re-checked against live data.
+      addToast(error.message, "error");
+      return;
+    }
+
+    clearCart();
+    reset();
+    navigate(`/success?orderId=${data.order_id}&total=${data.total}`);
   }
 
   function handleApplyPromo() {
@@ -130,9 +156,12 @@ export default function CheckoutPage() {
                 <div className="addr-check">✓</div>
               </div>
             ))}
-            <p className="checkout-note">
-              Choose a saved address for this demo order. Address management can be connected to the customer profile next.
-            </p>
+            <button
+              className="addr-add"
+              onClick={() => addToast("Address form coming soon")}
+            >
+              <span>+</span> Add new address
+            </button>
           </>
         )}
 

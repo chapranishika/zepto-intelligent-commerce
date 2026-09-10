@@ -79,7 +79,12 @@ class CollaborativeFilteringEngine:
             if pid in self.prod2idx:
                 scores[self.prod2idx[pid]] = -np.inf
 
-        top_idx = np.argsort(scores)[::-1][:n * 2]
+        # Top-(n*2) via argpartition — O(N) selection instead of a full
+        # O(N log N) sort — then sort only that small slice by score.
+        k = min(n * 2, len(scores))
+        top_unsorted = np.argpartition(scores, -k)[-k:]
+        top_idx = top_unsorted[np.argsort(scores[top_unsorted])[::-1]]
+
         results = []
         for idx in top_idx:
             if len(results) >= n:

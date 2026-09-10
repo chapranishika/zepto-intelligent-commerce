@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { PRODUCTS, CATEGORIES, getCatConf } from "../lib/products";
+import { PRODUCTS, CATEGORIES, type Product } from "../lib/products";
 import ProductCard from "../components/ui/ProductCard";
+import { fetchProducts, mapDBProduct } from "../lib/supabase";
 
 export default function CategoryPage() {
   const navigate      = useNavigate();
@@ -9,7 +10,26 @@ export default function CategoryPage() {
   const [selType, setSelType] = useState(params.get("type") ?? "");
 
   const activeCat = CATEGORIES.find((c) => c.type === selType);
-  const products  = selType ? PRODUCTS.filter((p) => p.type === selType) : PRODUCTS;
+
+  // Real Supabase data when reachable and seeded; falls back to the local
+  // bundled catalogue otherwise — same pattern used for the backend-backed
+  // rails elsewhere in the app. (The live products table may still be
+  // empty until the catalog is seeded — see backend/seed_db.py — in which
+  // case this silently uses the local fallback, not a broken empty page.)
+  const localProducts = selType ? PRODUCTS.filter((p) => p.type === selType) : PRODUCTS;
+  const [liveProducts, setLiveProducts] = useState<Product[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLiveProducts(null);
+    fetchProducts(selType || undefined, 60).then(({ data }) => {
+      if (cancelled) return;
+      setLiveProducts(data && data.length > 0 ? data.map(mapDBProduct) : null);
+    });
+    return () => { cancelled = true; };
+  }, [selType]);
+
+  const products = liveProducts ?? localProducts;
 
   return (
     <div className="page category-page">

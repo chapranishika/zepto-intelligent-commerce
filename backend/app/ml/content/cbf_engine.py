@@ -20,25 +20,23 @@ class ContentBasedEngine:
         self.tfidf = None
         self.tfidf_matrix = None
         self.dept_centroids: dict = {}
+        self._id_to_idx: dict = {}     # product_id -> row index, built once in load()
         self._st_model = None          # lazy-loaded sentence transformer
         self.loaded = False
 
     def load(self):
         try:
+            import faiss
             import scipy.sparse as sp
 
-            try:
-                import faiss
-            except ImportError:
-                faiss = None
-
-            index_path = MODELS_DIR / "faiss_product_index.bin"
-            if faiss is not None and index_path.exists():
-                self.faiss_index = faiss.read_index(str(index_path))
+            self.faiss_index = faiss.read_index(
+                str(MODELS_DIR / "faiss_product_index.bin")
+            )
             self.product_ids = np.load(MODELS_DIR / "faiss_product_ids.npy")
             self.embeddings  = np.load(
                 MODELS_DIR / "product_embeddings.npy"
             ).astype(np.float32)
+            self._id_to_idx = {int(pid): idx for idx, pid in enumerate(self.product_ids)}
 
             with open(MODELS_DIR / "tfidf_vectorizer.pkl", "rb") as f:
                 self.tfidf = pickle.load(f)
@@ -49,8 +47,7 @@ class ContentBasedEngine:
 
             self.loaded = True
             logger.info(
-                f"CBF engine ready: {len(self.product_ids)} products "
-                f"({'FAISS' if self.faiss_index is not None else 'NumPy cosine fallback'})"
+                f"CBF engine ready: {self.faiss_index.ntotal} products in FAISS"
             )
         except Exception as exc:
             logger.warning(f"CBF engine load failed: {exc}. Running degraded.")
@@ -71,15 +68,14 @@ class ContentBasedEngine:
         exclude = set(exclude_ids or [])
         exclude.add(product_id)
 
-        prod_list = self.product_ids.tolist()
-        if product_id not in prod_list:
+        p_idx = self._id_to_idx.get(product_id)
+        if p_idx is None:
             return []
 
-        p_idx = prod_list.index(product_id)
         query = self.embeddings[p_idx : p_idx + 1]
 
-        k = min(n + len(exclude) + 10, len(self.product_ids))
-        distances, indices = self._search(query, k)
+        k = min(n + len(exclude) + 10, self.faiss_index.ntotal)
+        distances, indices = self.faiss_index.search(query, k)
 
         results = []
         for idx, dist in zip(indices[0], distances[0]):
@@ -106,7 +102,7 @@ class ContentBasedEngine:
             return []
         try:
             emb = self._embed_query(query)
-            distances, indices = self._search(emb, n)
+            distances, indices = self.faiss_index.search(emb, n)
             return [
                 {
                     "product_id": int(self.product_ids[i]),
@@ -129,14 +125,6 @@ class ContentBasedEngine:
             [query.lower()], normalize_embeddings=True
         ).astype(np.float32)
         return emb
-
-    def _search(self, query: np.ndarray, n: int):
-        if self.faiss_index is not None:
-            return self.faiss_index.search(query, n)
-        scores = (query @ self.embeddings.T).ravel()
-        n = min(n, len(scores))
-        indices = np.argsort(scores)[::-1][:n]
-        return scores[indices][None, :], indices[None, :]
 
     def _tfidf_search(self, query: str, n: int) -> List[dict]:
         if self.tfidf is None or self.tfidf_matrix is None:
@@ -166,7 +154,7 @@ class ContentBasedEngine:
         centroid = np.array(
             self.dept_centroids[department], dtype=np.float32
         ).reshape(1, -1)
-        distances, indices = self._search(centroid, n)
+        distances, indices = self.faiss_index.search(centroid, n)
         return [
             {
                 "product_id": int(self.product_ids[i]),

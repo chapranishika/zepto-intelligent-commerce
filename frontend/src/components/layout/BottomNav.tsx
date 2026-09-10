@@ -1,13 +1,12 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { ChefHat, Grid2X2, Home, ShoppingBag, UserRound, type LucideIcon } from "lucide-react";
 import { useCartStore } from "../../store";
 
 const NAV = [
-  { path: "/home",     icon: Home,        label: "Home"       },
-  { path: "/category", icon: Grid2X2,     label: "Categories"  },
-  { path: "/cart",     icon: ShoppingBag, label: "Cart",  badge: true },
-  { path: "/cook",     icon: ChefHat,     label: "Cook"        },
-  { path: "/profile",  icon: UserRound,   label: "Profile"     },
+  { path: "/home",     icon: "🏠", label: "Home"       },
+  { path: "/category", icon: "🗂️", label: "Categories"  },
+  { path: "/cart",     icon: "🛒", label: "Cart",  badge: true },
+  { path: "/ai",       icon: "✨", label: "AI"          },
+  { path: "/profile",  icon: "👤", label: "Profile"     },
 ];
 
 export default function BottomNav() {
@@ -17,10 +16,8 @@ export default function BottomNav() {
 
   return (
     <nav className="bottom-nav">
-      {NAV.map(({ path, icon: Icon, label, badge }: { path: string; icon: LucideIcon; label: string; badge?: boolean }) => {
-        const active = path === "/cook"
-          ? pathname.startsWith("/cook") || pathname.startsWith("/ai")
-          : pathname.startsWith(path);
+      {NAV.map(({ path, icon, label, badge }) => {
+        const active = pathname.startsWith(path);
         return (
           <button
             key={path}
@@ -29,7 +26,7 @@ export default function BottomNav() {
             aria-label={label}
           >
             <span className="nav-icon">
-              <Icon aria-hidden="true" strokeWidth={active ? 2.4 : 1.9} />
+              {icon}
               {badge && totalItems > 0 && (
                 <span className="nav-badge">
                   {totalItems > 9 ? "9+" : totalItems}

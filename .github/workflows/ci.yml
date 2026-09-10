@@ -27,6 +27,14 @@ jobs:
   backend:
     name: Backend — Python + Tests
     runs-on: ubuntu-latest
+    # These services were provisioned from the start but sat unused — the
+    # main suite (test_api.py) runs against an in-memory SQLite regardless
+    # of DATABASE_URL (see conftest.py) for speed. tests/test_postgres_integration.py
+    # is what actually exercises this Postgres service: it applies the real
+    # Alembic migration chain from scratch and tests the place_order RPC +
+    # RLS directly, none of which SQLite can express. It self-skips if
+    # DATABASE_URL doesn't point at Postgres, which is exactly what makes
+    # it run here (DATABASE_URL below) and skip in a plain local `pytest`.
     services:
       postgres:
         image: postgres:16
@@ -60,7 +68,7 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://zepto:zepto@localhost:5432/zepto_test
           REDIS_URL: redis://localhost:6379
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          SECRET_KEY: test-secret-key
+          SUPABASE_JWT_SECRET: test-supabase-jwt-secret
 
   deploy-frontend:
     name: Deploy → Vercel
@@ -80,3 +88,4 @@ jobs:
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+

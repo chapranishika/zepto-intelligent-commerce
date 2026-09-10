@@ -1,18 +1,30 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { PRODUCTS } from "../lib/products";
-import { RECIPES } from "../lib/recipes";
+import { PRODUCTS, type Product } from "../lib/products";
 import ProductCard from "../components/ui/ProductCard";
+import { apiFetch, mapBackendProduct, type SearchResponse } from "../hooks";
 
 const POPULAR = ["tomato", "banana", "spinach", "milk", "onion", "mushroom", "masala", "soap"];
+
+function localSearch(q: string): Product[] {
+  const q_lower = q.toLowerCase();
+  return PRODUCTS.filter(
+    (p) =>
+      p.name.toLowerCase().includes(q_lower) ||
+      p.type.toLowerCase().includes(q_lower) ||
+      p.description.toLowerCase().includes(q_lower)
+  );
+}
 
 export default function SearchPage() {
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<typeof PRODUCTS | null>(null);
+  const [results, setResults] = useState<Product[] | null>(null);
+  const [isLive, setIsLive] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const requestIdRef = useRef(0);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -20,15 +32,23 @@ export default function SearchPage() {
     if (!q.trim()) { setResults(null); return; }
     setLoading(true);
     clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      const q_lower = q.toLowerCase();
-      const res = PRODUCTS.filter(
-        (p) =>
-          p.name.toLowerCase().includes(q_lower) ||
-          p.type.toLowerCase().includes(q_lower) ||
-          p.description.toLowerCase().includes(q_lower)
-      );
-      setResults(res);
+    debounceRef.current = setTimeout(async () => {
+      const requestId = ++requestIdRef.current;
+
+      // Real semantic search (LLM query expansion → FAISS/TF-IDF) when the
+      // backend is reachable; falls back to a plain local substring match
+      // otherwise — same "real when reachable, honest fallback" pattern as
+      // the rest of the app.
+      const result = await apiFetch<SearchResponse>(`/search?q=${encodeURIComponent(q)}&n=30`);
+      if (requestId !== requestIdRef.current) return; // a newer search superseded this one
+
+      if (result?.products?.length) {
+        setResults(result.products.map(mapBackendProduct));
+        setIsLive(true);
+      } else {
+        setResults(localSearch(q));
+        setIsLive(false);
+      }
       setLoading(false);
     }, 400);
   }
@@ -37,14 +57,6 @@ export default function SearchPage() {
     setQuery(v);
     doSearch(v);
   }
-
-  const cookingMatch = query.trim().length > 2
-    ? Object.values(RECIPES).find((recipe) => {
-        const words = query.toLowerCase().split(/\s+/).filter((word) => word.length > 2);
-        const title = recipe.title.toLowerCase();
-        return words.length > 0 && words.every((word) => title.includes(word));
-      })
-    : undefined;
 
   return (
     <div className="page search-page">
@@ -57,7 +69,7 @@ export default function SearchPage() {
             className="search-input-field"
             value={query}
             onChange={(e) => handleChange(e.target.value)}
-            placeholder="Search groceries, recipes, dishes & more…"
+            placeholder="Search vegetables, fruits & more…"
           />
           {query && (
             <button className="search-clear" onClick={() => { setQuery(""); setResults(null); }}>
@@ -88,19 +100,8 @@ export default function SearchPage() {
           <>
             <p className="search-result-count">
               {results.length} result{results.length !== 1 ? "s" : ""} for &ldquo;{query}&rdquo;
+              {isLive && " · 🤖 semantic search"}
             </p>
-            {cookingMatch && (
-              <div className="search-cook-bridge">
-                <div>
-                  <span className="search-cook-kicker">COOK WITH ZEPTO AI</span>
-                  <strong>{cookingMatch.title}</strong>
-                  <span>{cookingMatch.time} · {cookingMatch.serves} servings · ingredients to cart</span>
-                </div>
-                <button onClick={() => navigate(`/cook?query=${encodeURIComponent(cookingMatch.title)}`)}>
-                  Open recipe →
-                </button>
-              </div>
-            )}
             {results.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-icon">🔍</div>

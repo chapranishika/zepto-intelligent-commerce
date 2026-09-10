@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCartStore, useWishlistStore, useUIStore } from "../../store";
 import { discPct, type Product } from "../../lib/products";
+import { useEventTracker } from "../../hooks";
 
 interface Props {
   product: Product;
@@ -17,6 +18,7 @@ export default function ProductCard({ product: p, page = "home", wide = false }:
   const { toggle, has }   = useWishlistStore();
   const addToast          = useUIStore((s) => s.addToast);
   const navigate          = useNavigate();
+  const { trackClick, trackAddToCart } = useEventTracker();
   const [imgLoaded, setImgLoaded] = useState(false);
 
   const entry    = items.find((e) => e.product.id === p.id);
@@ -27,6 +29,7 @@ export default function ProductCard({ product: p, page = "home", wide = false }:
   function handleAdd(e: React.MouseEvent) {
     e.stopPropagation();
     addItem(p);
+    trackAddToCart(p.id, page);
     addToast(`${p.name} added to cart 🛒`);
   }
 
@@ -49,7 +52,7 @@ export default function ProductCard({ product: p, page = "home", wide = false }:
   return (
     <div
       className={`product-card${wide ? " wide" : ""}`}
-      onClick={() => navigate(`/product/${p.id}`)}
+      onClick={() => { trackClick(p.id, page); navigate(`/product/${p.id}`); }}
     >
       {/* Image */}
       <div className="pc-img-wrap">

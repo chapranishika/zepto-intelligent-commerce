@@ -10,7 +10,7 @@ import {
   FRESH_IDS, KITCHEN_HH_IDS, getById,
 } from "../lib/products";
 import { useCartStore, useUIStore } from "../store";
-import { RECIPES } from "../lib/recipes";
+import { useTrending, useRecommendations } from "../hooks";
 
 const HERO  = "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=900&q=80";
 const GOPI  = "/gopi_assistant.png";
@@ -22,34 +22,24 @@ const PROMOS = [
 
 const toList = (ids: number[]) => ids.map(getById).filter(Boolean) as ReturnType<typeof getById>[];
 
-const CATEGORY_LABELS: Record<string, string> = {
-  "Fresh Fruits": "Fruits",
-  "Fresh Vegetables": "Vegetables",
-  "Leafy Herbs": "Leafy",
-  "Exotic Veggies": "Exotic",
-  "Cold Drinks & Juices": "Drinks",
-  "Dairy, Bread & Eggs": "Dairy",
-  "Snacks & Munchies": "Snacks",
-  "Zepto Cafe": "Cafe",
-};
-
-const FEATURED_RECIPES = ["paneer_butter_masala", "paneer_tikka", "dal_tadka"];
-
 export default function HomePage() {
   const navigate   = useNavigate();
   const totalItems = useCartStore((s) => s.totalItems());
   const addToast   = useUIStore((s) => s.addToast);
   const [activeCat, setActiveCat] = useState("");
-  const [cookQuery, setCookQuery] = useState("");
-
-  function openCook() {
-    const query = cookQuery.trim();
-    navigate(query ? `/cook?query=${encodeURIComponent(query)}` : "/cook");
-  }
 
   const catProducts = activeCat
     ? PRODUCTS.filter((p) => p.type === activeCat)
     : [];
+
+  // Real backend rails (popularity CF / hybrid ranker) when reachable,
+  // falling back to the local curated lists otherwise — same pattern as
+  // ProductPage's "similar products" widget.
+  const { data: trendingFromAPI, fromAPI: trendingIsLive } = useTrending(12);
+  const trending = trendingIsLive && trendingFromAPI.length > 0 ? trendingFromAPI : toList(TRENDING_IDS);
+
+  const { data: forYouFromAPI, fromAPI: forYouIsLive } = useRecommendations({ n: 12 });
+  const forYou = forYouIsLive && forYouFromAPI.length > 0 ? forYouFromAPI : toList(FOR_YOU_IDS);
 
   return (
     <div className="page home-page">
@@ -65,15 +55,15 @@ export default function HomePage() {
           />
           <span className="logo-text">zepto</span>
         </div>
-          <button className="del-badge" aria-label="Change delivery location">
+        <button className="del-badge">
           <span className="dot-green" />
           <span>Delivering to Mumbai</span>
           <span className="chevron">▾</span>
         </button>
         <div className="topbar-right">
-          <button className="icon-btn" aria-label="Saved products" onClick={() => navigate("/profile")}>♡</button>
-          <button className="cart-chip" aria-label="Open cart" onClick={() => navigate("/cart")}>
-            <span aria-hidden="true">🛒</span>{totalItems > 0 && <span className="cart-chip-count">{totalItems}</span>}
+          <button className="icon-btn" onClick={() => navigate("/wishlist")}>♡</button>
+          <button className="cart-chip" onClick={() => navigate("/cart")}>
+            🛒{totalItems > 0 && <span className="cart-chip-count">{totalItems}</span>}
           </button>
         </div>
       </header>
@@ -96,10 +86,8 @@ export default function HomePage() {
           <div className="hero-content">
             <div className="hero-badge"><span>⚡</span><span>10-minute delivery — always</span></div>
             <h1 className="hero-title">
-              Fresh groceries<br />for <em>real life.</em>
+              Fresh groceries<br />in <em>10 minutes</em>,<br />every time.
             </h1>
-            <p className="hero-subtitle">From tonight's dinner to tomorrow's breakfast, delivered while it still matters.</p>
-            <button className="hero-action" onClick={() => navigate("/category")}>Shop fresh picks <span aria-hidden="true">→</span></button>
             <div className="hero-stats">
               {[["10","min","Delivery"],["5k","+","Products"],["4.8","★","Rating"],["2M","+","Orders"]].map(([n,u,l]) => (
                 <div className="stat" key={l}>
@@ -123,68 +111,11 @@ export default function HomePage() {
                 className={`cat-pill${activeCat === type ? " active" : ""}`}
                 onClick={() => setActiveCat(type)}
               >
-                {emoji} {CATEGORY_LABELS[type] ?? type.split(" ")[0]}
+                {emoji} {type.split(" ")[0]}
               </button>
             ))}
           </div>
         </div>
-
-        {/* ── Intent-led shopping entry point ── */}
-        <section className="intent-card" aria-labelledby="intent-title">
-          <div className="intent-copy">
-            <span className="intent-kicker">COOK WITH ZEPTO AI</span>
-            <h2 id="intent-title">What are you in the mood to make?</h2>
-            <p>Tell Gopi Bahu a dish, a craving, or what is already in your kitchen.</p>
-            <div className="intent-chips" aria-hidden="true">
-              <span>🍝 Quick dinner</span>
-              <span>🌿 High protein</span>
-              <span>🍲 Comfort food</span>
-            </div>
-          </div>
-          <form className="intent-form" onSubmit={(event) => { event.preventDefault(); openCook(); }}>
-            <input
-              aria-label="What do you want to cook?"
-              value={cookQuery}
-              onChange={(event) => setCookQuery(event.target.value)}
-              placeholder="What do you want to cook?"
-            />
-            <button className="intent-action" type="submit">
-              Ask Gopi Bahu <span aria-hidden="true">→</span>
-            </button>
-          </form>
-        </section>
-
-        <section className="recipe-discovery" aria-labelledby="recipe-discovery-title">
-          <div className="recipe-section-head">
-            <div>
-              <span className="intent-kicker">POPULAR TODAY</span>
-              <h2 id="recipe-discovery-title">Start with a dish</h2>
-            </div>
-            <button onClick={() => navigate("/cook")} className="text-action">See all recipes →</button>
-          </div>
-          <div className="recipe-discovery-grid">
-            {FEATURED_RECIPES.map((key) => {
-              const recipe = RECIPES[key];
-              if (!recipe) return null;
-              const image = getById(recipe.product_ids[0])?.src;
-              return (
-                <article key={key} className="recipe-discovery-card" onClick={() => navigate(`/cook?query=${encodeURIComponent(recipe.title)}`)}>
-                  <div className="recipe-discovery-image">
-                    {image && <img src={image} alt="" loading="lazy" />}
-                    <span>{recipe.category}</span>
-                  </div>
-                  <div className="recipe-discovery-body">
-                    <h3>{recipe.title}</h3>
-                    <p>{recipe.time} · Easy · ★ 4.8</p>
-                    <button onClick={(event) => { event.stopPropagation(); navigate(`/cook?query=${encodeURIComponent(recipe.title)}`); }}>
-                      Add ingredients
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </section>
 
         {/* ── Promo banners with real photos ── */}
         <div className="promo-scroll">
@@ -200,12 +131,12 @@ export default function HomePage() {
           ))}
         </div>
 
-        {/* ── Trending — ML-curated ── */}
+        {/* ── Trending — real backend popularity ranking when reachable ── */}
         <RecommendationRail
           title="Trending right now"
           emoji="🔥"
-          products={toList(TRENDING_IDS) as any[]}
-          tag="Bestsellers this week"
+          products={trending as any[]}
+          tag={trendingIsLive ? "🤖 Live popularity ranking" : "Bestsellers this week"}
           onSeeAll={() => navigate("/category")}
         />
 
@@ -223,12 +154,12 @@ export default function HomePage() {
           <span className="ai-arrow">›</span>
         </div>
 
-        {/* ── For You — personalised ML picks ── */}
+        {/* ── For You — real CF/hybrid ranker recommendations when reachable ── */}
         <RecommendationRail
           title="For you"
           emoji="🎯"
-          products={toList(FOR_YOU_IDS) as any[]}
-          tag="Personalised picks"
+          products={forYou as any[]}
+          tag={forYouIsLive ? "🤖 Personalised (hybrid ranker)" : "Personalised picks"}
           onSeeAll={() => navigate("/category")}
         />
 

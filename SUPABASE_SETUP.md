@@ -46,7 +46,8 @@ DATABASE_URL=postgresql+asyncpg://postgres.xxxxxxxxxxxx:[PASSWORD]@aws-0-ap-sout
 # DATABASE_URL=postgresql+asyncpg://postgres:[PASSWORD]@db.xxxxxxxxxxxx.supabase.co:5432/postgres
 
 ANTHROPIC_API_KEY=sk-ant-...
-SECRET_KEY=<output of: python -c "import secrets; print(secrets.token_hex(32))">
+# Supabase dashboard → Project Settings → API → JWT Settings → JWT Secret
+SUPABASE_JWT_SECRET=<your project's JWT secret>
 ```
 
 ---
@@ -66,13 +67,13 @@ pip install alembic aiosqlite
 alembic upgrade head
 ```
 
-You should see:
-```
-INFO  [alembic.runtime.migration] Running upgrade  -> 001, Initial schema
-```
+You should see 001 through 004 run in sequence (schema, move identity to
+Supabase Auth, RLS policies, the `place_order` function).
 
 Verify in Supabase dashboard → **Table Editor** — you should see:
-`departments`, `products`, `users`, `user_events`, `orders`, etc.
+`departments`, `products`, `user_events`, `orders`, `order_items`,
+`wishlist_items`, `promo_codes`. There's no `users` table — identity lives
+in Supabase's own `auth.users`, which the app's tables reference directly.
 
 ---
 
@@ -81,22 +82,25 @@ Verify in Supabase dashboard → **Table Editor** — you should see:
 Still using the **Direct** connection:
 
 ```bash
-# Make sure the ML artifacts exist first
-python ml_research/02_collaborative_filtering.py
-python ml_research/03_content_embeddings.py
+# Generates data/processed/products.json if it doesn't exist yet — see
+# CONSISTENCY.md for why the DB, ML pipeline, and frontend all read from
+# this same generated file
+python generate_large_catalog.py
 
-# Seed products, categories, promo codes
+# Seed products, categories, promo codes from products.json
 python seed_db.py
 ```
 
 Expected output:
 ```
-✅  Seeded 33 products across 7 categories
+✅  Seeded 5060 products across 11 categories
 ✅  Seeded 4 promo codes
 ```
 
-Verify in Supabase → Table Editor → `products` — should show 33 rows with
-real Zepto CDN image URLs.
+Verify in Supabase → Table Editor → `products` — should show 5,060 rows.
+Then train the ML pipeline against this same catalogue (see the README's
+"ML Pipeline" quick-start step) so recommendations and similar-product
+lookups return real, matching product IDs rather than empty results.
 
 ---
 
@@ -115,7 +119,7 @@ curl http://localhost:8000/api/v1/health
 # → {"status":"ok","db":"connected",...}
 
 curl http://localhost:8000/api/v1/products | python -m json.tool | head -30
-# → array of 33 real Zepto products
+# → array of products from the generated catalogue (paginated, 20 by default)
 
 curl http://localhost:8000/api/v1/recommend/global/trending
 # → {"products":[...],"source":"trending"}
@@ -133,7 +137,7 @@ curl http://localhost:8000/api/v1/recommend/global/trending
    DATABASE_URL  = <Supabase Transaction Pooler URL, port 6543>
    REDIS_URL     = <Upstash Redis URL>
    ANTHROPIC_API_KEY = sk-ant-...
-   SECRET_KEY    = <your secret>
+   SUPABASE_JWT_SECRET = <Supabase dashboard → Project Settings → API>
    ALLOWED_ORIGINS = https://your-app.vercel.app
    ```
 5. Render auto-detects the Dockerfile and deploys
@@ -144,7 +148,11 @@ curl http://localhost:8000/api/v1/recommend/global/trending
 
 ```bash
 cd frontend
-echo "VITE_API_URL=https://instantdeliverycloneapp.onrender.com/api/v1" > .env.production
+cat >> .env.production <<EOF
+VITE_API_URL=https://instantdeliverycloneapp.onrender.com/api/v1
+VITE_SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
+VITE_SUPABASE_ANON_KEY=<Supabase dashboard → Project Settings → API → anon public key>
+EOF
 ```
 
 Then deploy:
