@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getRecipeById } from "../../lib/recipes";
 import { useSavedRecipesStore, useUIStore } from "../../store";
+import RecipeMeta from "../../components/cook/RecipeMeta";
 
 type Tab = "overview" | "ingredients" | "steps" | "nutrition";
 
@@ -71,14 +72,7 @@ export default function RecipeDetailPage() {
         <h1 className="rd-title">{recipe.title}</h1>
         <p className="rd-desc">{recipe.description}</p>
 
-        <div className="rd-meta-grid">
-          <div className="rd-meta-item"><span className="star">★</span> {recipe.rating.toFixed(1)}</div>
-          <div className="rd-meta-item">💬 {recipe.reviews.toLocaleString()}</div>
-          <div className="rd-meta-item">⏱ {recipe.timeMins} min</div>
-          <div className="rd-meta-item">📶 {recipe.difficulty}</div>
-          <div className="rd-meta-item">🍽 Serves {recipe.servings}</div>
-          <div className="rd-meta-item">🌍 {recipe.cuisine}</div>
-        </div>
+        <RecipeMeta recipe={recipe} />
 
         <div className="rd-tabs">
           {(["overview", "ingredients", "steps", "nutrition"] as Tab[]).map((t) => (

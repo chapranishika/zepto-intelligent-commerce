@@ -1,25 +1,17 @@
 /**
- * RecipeIngredientsPage — Screen 4 (route: /cook/recipe/:id/ingredients),
- * with Screen 5 (success) and Screen 7 (unavailable ingredients) built in
- * as in-page states rather than separate routes — the app's own route list
- * (see App.tsx) doesn't carry dedicated routes for either, and a modal/
- * sheet was explicitly allowed as the alternative for the success state.
- *
- * Screen 7 (unavailable ingredients): every unavailable ingredient here was
- * checked case by case for a real, sensible substitute in the catalogue —
- * Fresh Cream -> Butter, Red Chilli Powder -> extra Green Chilli. Where one
- * exists, "Replace" is a real action: it adds that real product to your
- * cart in place of the missing ingredient. Where none makes culinary sense
- * (garlic, ginger, cashew, whole/ground spices, chickpeas — nothing in this
- * catalogue is a sane substitute for any of those), there's no Replace
- * button at all rather than a fake one that doesn't actually do anything.
+ * RecipeIngredientsPage — Screen 4 (route: /cook/recipe/:id/ingredients).
+ * Orchestrates selection/quantity/substitution/"already have" state and
+ * hands rendering off to IngredientList, SubstitutionOffer, and
+ * RecipeCartSummary; Screen 5 renders via RecipeSuccessState.
  */
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import RecipeCard from "../../components/ui/RecipeCard";
+import IngredientList from "../../components/cook/IngredientList";
+import SubstitutionOffer from "../../components/cook/SubstitutionOffer";
+import RecipeCartSummary from "../../components/cook/RecipeCartSummary";
+import RecipeSuccessState from "../../components/cook/RecipeSuccessState";
 import {
-  getRecipeById, relatedRecipes, resolveIngredientProduct, resolveSubstituteProduct,
-  type RecipeIngredient,
+  getRecipeById, resolveIngredientProduct, resolveSubstituteProduct,
 } from "../../lib/recipes";
 import { useCartStore } from "../../store";
 import type { Product } from "../../lib/products";
@@ -45,9 +37,13 @@ export default function RecipeIngredientsPage() {
   const [qty, setQty] = useState<Record<string, number>>(
     () => Object.fromEntries(available.map((i) => [i.id, 1]))
   );
-  // Unavailable ingredients the user chose to swap for their real substitute
-  // (e.g. Fresh Cream -> Butter). Selected + priced exactly like a normal
-  // available ingredient once activated.
+  // Available ingredients the user says they already have — excluded from
+  // the cart/total without deleting them from the list, so it's still
+  // obvious the recipe needs them.
+  const [haveAlready, setHaveAlready] = useState<Set<string>>(new Set());
+  // Unavailable ingredients the user chose to swap for their real
+  // substitute (e.g. Fresh Cream -> Butter). Selected + priced exactly
+  // like a normal available ingredient once activated.
   const [replaced, setReplaced] = useState<Set<string>>(new Set());
   const [addedOpen, setAddedOpen] = useState(false);
 
@@ -62,7 +58,7 @@ export default function RecipeIngredientsPage() {
     );
   }
 
-  function toggle(ingId: string) {
+  function toggleSelected(ingId: string) {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(ingId)) next.delete(ingId);
@@ -71,8 +67,28 @@ export default function RecipeIngredientsPage() {
     });
   }
 
+  function toggleHaveAlready(ingId: string) {
+    setHaveAlready((prev) => {
+      const next = new Set(prev);
+      if (next.has(ingId)) {
+        // Undo: you do need to buy it after all — restore it to selected,
+        // otherwise it'd be silently excluded from the total forever
+        // (neither "have already" nor selected).
+        next.delete(ingId);
+        setSelected((s) => new Set(s).add(ingId));
+      } else {
+        next.add(ingId);
+        // Having it already implies you don't need to buy it — deselect,
+        // but leave the row visible so it's clear the recipe still needs it.
+        setSelected((s) => { const n = new Set(s); n.delete(ingId); return n; });
+      }
+      return next;
+    });
+  }
+
   function selectAll() {
     setSelected(new Set(available.map((i) => i.id)));
+    setHaveAlready(new Set());
   }
   function deselectAll() {
     setSelected(new Set());
@@ -82,9 +98,9 @@ export default function RecipeIngredientsPage() {
     setQty((prev) => ({ ...prev, [ingId]: Math.max(1, Math.min(9, (prev[ingId] ?? 1) + delta)) }));
   }
 
-  function activateSubstitute(ing: RecipeIngredient) {
-    setReplaced((prev) => new Set(prev).add(ing.id));
-    setQty((prev) => ({ ...prev, [ing.id]: prev[ing.id] ?? 1 }));
+  function activateSubstitute(ingId: string) {
+    setReplaced((prev) => new Set(prev).add(ingId));
+    setQty((prev) => ({ ...prev, [ingId]: prev[ingId] ?? 1 }));
   }
   function undoSubstitute(ingId: string) {
     setReplaced((prev) => {
@@ -94,28 +110,30 @@ export default function RecipeIngredientsPage() {
     });
   }
 
-  // Resolve what product (if any) an ingredient actually contributes to the
-  // cart/total: its own real product, or — if the user activated it — its
-  // substitute's real product.
-  function effectiveProduct(ing: RecipeIngredient): Product | undefined {
-    if (ing.productId != null) return resolveIngredientProduct(ing);
-    if (replaced.has(ing.id)) return resolveSubstituteProduct(ing);
-    return undefined;
-  }
-
-  const selectedAvailable = available.filter((i) => selected.has(i.id));
+  const selectedAvailable = available.filter((i) => selected.has(i.id) && !haveAlready.has(i.id));
   const selectedReplaced = unavailable.filter((i) => replaced.has(i.id));
   const allSelected = [...selectedAvailable, ...selectedReplaced];
 
+  function effectiveProduct(ingId: string, isAvailable: boolean): Product | undefined {
+    if (isAvailable) {
+      const ing = available.find((i) => i.id === ingId);
+      return ing ? resolveIngredientProduct(ing) : undefined;
+    }
+    const ing = unavailable.find((i) => i.id === ingId);
+    return ing ? resolveSubstituteProduct(ing) : undefined;
+  }
+
   const total = allSelected.reduce((sum, ing) => {
-    const p = effectiveProduct(ing);
+    const isAvail = ing.productId != null;
+    const p = effectiveProduct(ing.id, isAvail);
     return p ? sum + p.disc * (qty[ing.id] ?? 1) : sum;
   }, 0);
 
   function handleAddToCart() {
     const entries = allSelected
       .map((ing) => {
-        const product = effectiveProduct(ing);
+        const isAvail = ing.productId != null;
+        const product = effectiveProduct(ing.id, isAvail);
         return product ? { product, qty: qty[ing.id] ?? 1 } : null;
       })
       .filter((e): e is { product: Product; qty: number } => e != null);
@@ -151,132 +169,41 @@ export default function RecipeIngredientsPage() {
           </div>
         )}
 
-        <ul className="ing-list">
-          {available.map((ing) => {
-            const product = resolveIngredientProduct(ing);
-            if (!product) return null;
-            const isSelected = selected.has(ing.id);
-            const q = qty[ing.id] ?? 1;
-            return (
-              <li
-                key={ing.id}
-                className={`ing-row${isSelected ? "" : " dim"}`}
-                onClick={() => toggle(ing.id)}
-                role="checkbox"
-                aria-checked={isSelected}
-                aria-label={isSelected ? `Deselect ${ing.name}` : `Select ${ing.name}`}
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(ing.id); } }}
-              >
-                {/* Purely visual — the whole row (not just this small square)
-                    is the actual tap target, so it isn't its own <button>. */}
-                <span className={`ing-checkbox${isSelected ? " checked" : ""}`} aria-hidden="true">
-                  {isSelected && "✓"}
-                </span>
-                <div className="ing-img">
-                  <img src={product.src} alt={product.name} loading="lazy"
-                    onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0"; }} />
-                </div>
-                <div className="ing-info">
-                  <p className="ing-name">{ing.name}</p>
-                  <p className="ing-qty-label">{ing.quantityLabel}</p>
-                  <p className="ing-product-name">{product.name}</p>
-                  <div className="ing-price-row">
-                    <span className="ing-price">₹{product.disc}</span>
-                    <span className="ing-available">✓ Available</span>
-                  </div>
-                </div>
-                {isSelected && (
-                  <div className="ing-qty-ctrl" onClick={(e) => e.stopPropagation()}>
-                    <button onClick={() => changeQty(ing.id, -1)} disabled={q <= 1} aria-label={`Decrease ${ing.name} quantity`}>−</button>
-                    <span>{q}</span>
-                    <button onClick={() => changeQty(ing.id, 1)} disabled={q >= 9} aria-label={`Increase ${ing.name} quantity`}>+</button>
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        <IngredientList
+          ingredients={available}
+          selected={selected}
+          haveAlready={haveAlready}
+          qty={qty}
+          onToggleSelected={toggleSelected}
+          onToggleHaveAlready={toggleHaveAlready}
+          onChangeQty={changeQty}
+        />
 
         {unavailable.length > 0 && (
           <div className="ing-unavailable-section">
             <h3>Not available</h3>
             <ul className="ing-list">
-              {unavailable.map((ing: RecipeIngredient) => {
-                const substitute = resolveSubstituteProduct(ing);
-                const isReplaced = replaced.has(ing.id);
-                const q = qty[ing.id] ?? 1;
-
-                if (substitute && isReplaced) {
-                  // Activated — behaves like a normal selected/priced row,
-                  // using the substitute product for price and cart entry.
-                  return (
-                    <li key={ing.id} className="ing-row">
-                      <span className="ing-checkbox checked" aria-hidden="true">✓</span>
-                      <div className="ing-img">
-                        <img src={substitute.src} alt={substitute.name} loading="lazy"
-                          onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0"; }} />
-                      </div>
-                      <div className="ing-info">
-                        <p className="ing-name">{ing.name} <span className="ing-replaced-tag">→ {substitute.name}</span></p>
-                        <p className="ing-qty-label">{ing.substituteReason}</p>
-                        <div className="ing-price-row">
-                          <span className="ing-price">₹{substitute.disc}</span>
-                          <button className="ing-undo-btn" onClick={() => undoSubstitute(ing.id)}>Undo</button>
-                        </div>
-                      </div>
-                      <div className="ing-qty-ctrl">
-                        <button onClick={() => changeQty(ing.id, -1)} disabled={q <= 1} aria-label={`Decrease ${ing.name} quantity`}>−</button>
-                        <span>{q}</span>
-                        <button onClick={() => changeQty(ing.id, 1)} disabled={q >= 9} aria-label={`Increase ${ing.name} quantity`}>+</button>
-                      </div>
-                    </li>
-                  );
-                }
-
-                return (
-                  <li key={ing.id} className="ing-row unavailable">
-                    <div className="ing-img placeholder">🚫</div>
-                    <div className="ing-info">
-                      <p className="ing-name">{ing.name}</p>
-                      <p className="ing-qty-label">{ing.quantityLabel}</p>
-                      <p className="ing-unavailable-note">{ing.note ?? "Not currently stocked"}</p>
-                      {substitute && (
-                        <div className="ing-substitute-offer">
-                          <span>{ing.substituteReason}</span>
-                          <button
-                            className="ing-replace-btn"
-                            onClick={() => activateSubstitute(ing)}
-                          >
-                            Replace with {substitute.name} · ₹{substitute.disc}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
+              {unavailable.map((ing) => (
+                <SubstitutionOffer
+                  key={ing.id}
+                  ingredient={ing}
+                  substitute={resolveSubstituteProduct(ing)}
+                  active={replaced.has(ing.id)}
+                  qty={qty[ing.id] ?? 1}
+                  onActivate={() => activateSubstitute(ing.id)}
+                  onUndo={() => undoSubstitute(ing.id)}
+                  onChangeQty={(delta) => changeQty(ing.id, delta)}
+                />
+              ))}
             </ul>
           </div>
         )}
       </div>
 
-      <div className="ing-sticky-cta">
-        <div className="ing-cta-summary">
-          <span>{allSelected.length} ingredient{allSelected.length === 1 ? "" : "s"} selected</span>
-          <strong>Total: ₹{total}</strong>
-        </div>
-        <button
-          className="ing-cta-btn"
-          disabled={allSelected.length === 0}
-          onClick={handleAddToCart}
-        >
-          Add {allSelected.length} ingredient{allSelected.length === 1 ? "" : "s"} to cart · ₹{total}
-        </button>
-      </div>
+      <RecipeCartSummary count={allSelected.length} total={total} onAddToCart={handleAddToCart} />
 
       {addedOpen && (
-        <RecipeAddedSheet
+        <RecipeSuccessState
           recipeId={recipe.id}
           recipeTitle={recipe.title}
           recipeImage={recipe.image}
@@ -286,64 +213,6 @@ export default function RecipeIngredientsPage() {
           onClose={() => setAddedOpen(false)}
         />
       )}
-    </div>
-  );
-}
-
-// ── Screen 5 — success sheet ──────────────────────────────────────────────────
-
-function RecipeAddedSheet({
-  recipeId, recipeTitle, recipeImage, timeMins, difficulty, itemCount, onClose,
-}: {
-  recipeId: string;
-  recipeTitle: string;
-  recipeImage: string;
-  timeMins: number;
-  difficulty: string;
-  itemCount: number;
-  onClose: () => void;
-}) {
-  const navigate = useNavigate();
-  const recipe = getRecipeById(recipeId);
-  const related = recipe ? relatedRecipes(recipe, 3) : [];
-
-  return (
-    <div className="sheet-overlay" onClick={onClose}>
-      <div className="sheet-panel added-sheet" onClick={(e) => e.stopPropagation()}>
-        <button className="sheet-close" onClick={onClose} aria-label="Close">✕</button>
-
-        <div className="added-check">✓</div>
-        <h2 className="added-title">Ingredients added<br />to your cart!</h2>
-        <p className="added-sub">
-          {itemCount} item{itemCount === 1 ? "" : "s"} for {recipeTitle} {itemCount === 1 ? "has" : "have"} been added.
-        </p>
-
-        <div className="added-recipe-card">
-          <img src={recipeImage} alt={recipeTitle} />
-          <div>
-            <strong>{recipeTitle}</strong>
-            <p>⏱ {timeMins} min · {difficulty}</p>
-          </div>
-        </div>
-
-        <button className="btn-primary full" onClick={() => navigate("/cart")}>
-          Go to Cart
-        </button>
-        <button className="btn-text" onClick={() => { onClose(); navigate("/cook"); }}>
-          Explore more recipes
-        </button>
-
-        {related.length > 0 && (
-          <div className="added-related">
-            <h3>You may also like</h3>
-            <div className="added-related-grid">
-              {related.map((r) => (
-                <RecipeCard key={r.id} recipe={r} />
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

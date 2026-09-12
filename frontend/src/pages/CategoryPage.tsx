@@ -16,7 +16,15 @@ export default function CategoryPage() {
   // rails elsewhere in the app. (The live products table may still be
   // empty until the catalog is seeded — see backend/seed_db.py — in which
   // case this silently uses the local fallback, not a broken empty page.)
-  const localProducts = selType ? PRODUCTS.filter((p) => p.type === selType) : PRODUCTS;
+  //
+  // The unfiltered "All Categories" view used to fall back to the FULL
+  // 5,060-item catalogue while the live fetch (which caps at 60) was in
+  // flight — mounting 5,060 ProductCards, even briefly, blocked the main
+  // thread for 10+ seconds on every visit. Capped to the same 60-item
+  // limit as the live fetch so the fallback is actually a fallback, not a
+  // guaranteed multi-second freeze. Category-filtered views were already
+  // fine (largest department is ~460 items) and are untouched.
+  const localProducts = selType ? PRODUCTS.filter((p) => p.type === selType) : PRODUCTS.slice(0, 60);
   const [liveProducts, setLiveProducts] = useState<Product[] | null>(null);
 
   useEffect(() => {
