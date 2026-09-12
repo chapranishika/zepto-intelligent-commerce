@@ -18,6 +18,15 @@ scikit-learn==1.5.0
 faiss-cpu==1.8.0
 lightgbm==4.3.0
 
+# Real-time query embedding for /search (app/ml/content/cbf_engine.py's
+# _embed_query, called synchronously from the request path — this is why
+# it's here and not only in requirements-worker.txt, unlike `implicit`/
+# `pyarrow` which only the Celery worker's retraining jobs need). Pin the
+# CPU-only torch wheel so this doesn't pull the ~2GB CUDA build.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.3.1+cpu
+sentence-transformers==3.0.1
+
 # ── LLM ───────────────────────────────────────────────────────────────────────
 anthropic==0.28.0
 

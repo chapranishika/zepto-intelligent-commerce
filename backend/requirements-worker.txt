@@ -1,0 +1,17 @@
+# ── Celery worker/beat — nightly & weekly recommendation model retraining ─────
+# SEPARATE from requirements.txt on purpose, but smaller than you'd expect:
+# sentence-transformers/torch now live in the base requirements.txt because
+# the WEB service needs them too (real-time query embedding for /search —
+# see requirements.txt's comment). Only the packages below are genuinely
+# worker-only — the web service never trains anything, so it has no use for
+# ALS training or parquet snapshotting.
+#
+# Build: `pip install -r requirements.txt -r requirements-worker.txt`
+# (requirements.txt first — this file assumes it's already installed.)
+
+# ALS collaborative filtering (app/tasks/celery_tasks.py: rebuild_interaction_matrix)
+implicit==0.7.2
+
+# Parquet I/O for the interaction-matrix snapshot (celery_tasks.py writes
+# data/processed/user_item_interactions.parquet)
+pyarrow==16.1.0

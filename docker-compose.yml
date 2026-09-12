@@ -56,5 +56,29 @@ services:
       - ./backend/data:/app/data
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
+  # Nightly/weekly recommendation-model retraining — see
+  # backend/RENDER_WORKER_SETUP.md for the production (Render) equivalent of
+  # this service. Optional for local dev: the web `backend` service runs
+  # fine without it, just with recommendations that never improve from user
+  # events. Start it explicitly: `docker compose --profile worker up`.
+  worker:
+    profiles: ["worker"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    container_name: zepto_worker
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/zepto
+      REDIS_URL:    redis://redis:6379/0
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/data:/app/data
+
 volumes:
   zepto_pg_data:
