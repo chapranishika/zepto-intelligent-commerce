@@ -2,6 +2,7 @@
 FastAPI route definitions
 All endpoints for the Zepto clone backend.
 """
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
@@ -392,9 +393,16 @@ async def search(
     expanded = await assistant.expand_search_query(q)
 
     # Step 2: Semantic search across all expanded queries
+    #
+    # search_by_text is synchronous, CPU-bound work (FAISS + a lazy-loaded
+    # sentence-transformer model whose first call also loads/downloads the
+    # model). Calling it directly here would block this worker's *entire*
+    # event loop for however long that takes — including unrelated requests
+    # like /health — since nothing else can run on this thread meanwhile.
+    # asyncio.to_thread hands it to a worker thread instead.
     all_results: dict = {}
     for term in expanded[:3]:
-        candidates = cbf.search_by_text(term, n=n)
+        candidates = await asyncio.to_thread(cbf.search_by_text, term, n)
         for c in candidates:
             pid = c["product_id"]
             if pid not in all_results or c["cbf_score"] > all_results[pid]["cbf_score"]:
@@ -571,7 +579,9 @@ async def recipe_assistant(
     cbf = get_cbf_engine()
     product_suggestions = []
     for ingredient in body.ingredients[:5]:
-        results = cbf.search_by_text(ingredient, n=3)
+        # See the /search route for why this needs to_thread — same
+        # blocking-the-event-loop hazard applies here.
+        results = await asyncio.to_thread(cbf.search_by_text, ingredient, n=3)
         ids = [r["product_id"] for r in results]
         products = await fetch_products_by_ids(ids, db)
         product_suggestions.extend([p.model_dump() for p in products])
