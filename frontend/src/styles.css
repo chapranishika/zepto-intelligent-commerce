@@ -1304,6 +1304,14 @@ a      { text-decoration: none; color: inherit; }
 .ing-price { font-size: 12.5px; font-weight: 700; color: var(--pk); }
 .ing-available { font-size: 10px; color: var(--gn); font-weight: 600; }
 .ing-unavailable-note { font-size: 11px; color: var(--am); margin-top: 3px; line-height: 1.4; }
+.ing-substitute-offer { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.ing-substitute-offer > span { font-size: 11px; color: var(--mu); }
+.ing-replace-btn {
+  background: var(--pkl); color: var(--pk); border: 1.5px solid var(--pk);
+  border-radius: var(--radius-sm); padding: 7px 12px; font-size: 11.5px; font-weight: 700;
+}
+.ing-replaced-tag { font-size: 11px; font-weight: 600; color: var(--gn); }
+.ing-undo-btn { font-size: 10.5px; color: var(--mu); text-decoration: underline; }
 .ing-qty-ctrl {
   display: flex; align-items: center; gap: 0; flex-shrink: 0;
   border: 1.5px solid var(--pk); border-radius: 7px; overflow: hidden; height: 26px;
@@ -1461,6 +1469,71 @@ a      { text-decoration: none; color: inherit; }
   .from-ing-result-grid { display: grid; grid-template-columns: repeat(2, 1fr); }
 
   .home-recipe-scroll .recipe-card { flex: 0 0 240px; }
+}
+
+/* ============================================================
+   REAL DESKTOP NAVIGATION (site-wide, >=1024px)
+   ============================================================
+   Hidden below 1024px (bottom nav drives mobile/tablet). At
+   >=1024px it replaces the bottom nav entirely and the app-shell
+   drops the "card in a browser" treatment (max-width, borders,
+   shadow) that the earlier 768/1200px rules add, in favour of a
+   full-width bar with a wide, readable content shell — this block
+   is deliberately placed after those rules so it wins the cascade
+   for the properties it overrides (same selector, same specificity,
+   later source order).
+   ============================================================ */
+.top-nav { display: none; }
+
+@media (min-width: 1024px) {
+  .bottom-nav { display: none; }
+  .app-content { padding-bottom: 0; }
+
+  .app-shell {
+    max-width: 1400px;
+    border-left: none; border-right: none; box-shadow: none;
+  }
+
+  .top-nav {
+    display: block;
+    position: sticky; top: 0; z-index: 100;
+    background: #fff; border-bottom: 1px solid var(--gm);
+  }
+  .top-nav-inner {
+    max-width: 1280px; margin: 0 auto;
+    display: flex; align-items: center; gap: 32px;
+    padding: 14px 24px;
+  }
+  .top-nav-logo {
+    display: flex; align-items: center; gap: 7px; flex-shrink: 0;
+  }
+  .top-nav-logo img { height: 22px; }
+  .top-nav-logo span {
+    font-family: 'Syne',sans-serif; font-weight: 800; font-size: 18px; color: var(--pk);
+  }
+  .top-nav-links { display: flex; align-items: center; gap: 6px; flex: 1; }
+  .top-nav-link {
+    padding: 8px 16px; border-radius: 20px;
+    font-size: 14px; font-weight: 600; color: var(--mu);
+  }
+  .top-nav-link:hover { background: var(--gy); color: var(--tx); }
+  .top-nav-link.active { background: var(--pkl); color: var(--pk); }
+  .top-nav-cart {
+    display: flex; align-items: center; gap: 6px; position: relative;
+    background: var(--pk); color: #fff; border-radius: var(--radius-md);
+    padding: 9px 18px; font-size: 13px; font-weight: 700; flex-shrink: 0;
+  }
+  .top-nav-cart:hover { background: var(--pkd); }
+  .top-nav-cart-badge {
+    background: #fff; color: var(--pk); border-radius: 10px;
+    padding: 1px 6px; font-size: 11px; font-weight: 800;
+  }
+
+  /* Sticky bottom CTAs no longer need to clear the (now hidden)
+     bottom nav, and the app-shell is no longer centered/bordered. */
+  .checkout-bar, .ing-sticky-cta, .rd-sticky-cta {
+    bottom: 0; max-width: 1400px; left: 50%; transform: translateX(-50%);
+  }
 }
 
 @media (min-width: 1200px) {

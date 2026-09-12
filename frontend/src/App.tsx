@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import BottomNav         from "./components/layout/BottomNav";
+import TopNav            from "./components/layout/TopNav";
 import HomePage          from "./pages/HomePage";
 import CategoryPage      from "./pages/CategoryPage";
 import ProductPage       from "./pages/ProductPage";
@@ -68,6 +69,7 @@ export default function App() {
     <BrowserRouter>
       <AuthBootstrap />
       <div className="app-shell">
+        <TopNav />
         <div className="app-content">
           <Routes>
             <Route path="/"              element={<Navigate to="/home" replace />} />

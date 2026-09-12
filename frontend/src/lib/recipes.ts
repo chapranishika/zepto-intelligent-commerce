@@ -21,6 +21,17 @@ export interface RecipeIngredient {
   quantityLabel: string;    // "200g", "2 medium", "to taste"
   productId: number | null; // real catalogue id, or null if not stocked
   note?: string;            // shown when productId is null
+  /**
+   * A real, purchasable stand-in for an unavailable ingredient — only set
+   * when one genuinely makes culinary sense (Fresh Cream -> Butter, not
+   * Chickpeas -> anything). Checked case by case, not filled in
+   * mechanically: most unavailable ingredients here (garlic, ginger,
+   * cashew, ground/whole spices, chickpeas) have nothing sensible to
+   * substitute with in this catalogue, and are left without one rather
+   * than forcing a fake "Replace" action that doesn't actually help.
+   */
+  substituteProductId?: number;
+  substituteReason?: string;
 }
 
 export interface RecipeStep {
@@ -80,9 +91,11 @@ export const RECIPES: Recipe[] = [
       { id: "chilli",   name: "Green Chilli",        quantityLabel: "2 pieces", productId: 1064 },
       { id: "cashew",   name: "Cashew",              quantityLabel: "10 pieces (30g)", productId: null, note: "Not currently stocked in our catalogue" },
       { id: "butter",   name: "Butter",              quantityLabel: "100g",     productId: 4448 },
-      { id: "cream",    name: "Fresh Cream",         quantityLabel: "100ml",   productId: null, note: "Not currently stocked — Butter above adds similar richness" },
+      { id: "cream",    name: "Fresh Cream",         quantityLabel: "100ml",   productId: null, note: "Not currently stocked",
+        substituteProductId: 4448, substituteReason: "Butter adds similar richness to the gravy" },
       { id: "methi",    name: "Kasuri Methi",        quantityLabel: "10g",      productId: 1251, note: undefined },
-      { id: "chilli-pw",name: "Red Chilli Powder",   quantityLabel: "5g",       productId: null, note: "Not currently stocked — you likely have this at home" },
+      { id: "chilli-pw",name: "Red Chilli Powder",   quantityLabel: "5g",       productId: null, note: "Not currently stocked",
+        substituteProductId: 1064, substituteReason: "Extra Green Chilli adds heat in its place" },
       { id: "salt",     name: "Salt",                quantityLabel: "to taste", productId: 2600 },
     ],
     steps: [
@@ -153,7 +166,8 @@ export const RECIPES: Recipe[] = [
       { id: "chilli",   name: "Green Chilli",     quantityLabel: "2 pieces",  productId: 1064 },
       { id: "coriander",name: "Coriander Leaves", quantityLabel: "a small bunch", productId: 1233 },
       { id: "ghee",     name: "Ghee",             quantityLabel: "for cooking", productId: 2646 },
-      { id: "chilli-pw",name: "Red Chilli Powder",quantityLabel: "1 tsp",     productId: null, note: "Not currently stocked — you likely have this at home" },
+      { id: "chilli-pw",name: "Red Chilli Powder",quantityLabel: "1 tsp",     productId: null, note: "Not currently stocked",
+        substituteProductId: 1064, substituteReason: "Finely chopped Green Chilli in the filling works too" },
       { id: "salt",     name: "Salt",             quantityLabel: "to taste",  productId: 2600 },
       { id: "curd",     name: "Curd",             quantityLabel: "for serving", productId: 4550 },
     ],
@@ -278,6 +292,11 @@ export function resolveIngredientProduct(ing: RecipeIngredient): Product | undef
 
 export function isIngredientAvailable(ing: RecipeIngredient): boolean {
   return ing.productId != null && resolveIngredientProduct(ing) != null;
+}
+
+/** The real product behind an ingredient's substitute suggestion, if any. */
+export function resolveSubstituteProduct(ing: RecipeIngredient): Product | undefined {
+  return ing.substituteProductId != null ? getById(ing.substituteProductId) : undefined;
 }
 
 /** "You may also like" — a few other recipes, preferring the same cuisine. */
