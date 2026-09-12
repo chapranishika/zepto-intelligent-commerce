@@ -1,0 +1,47 @@
+FROM python:3.11-slim
+
+# System deps for faiss, lightgbm, implicit (C extension build), numpy, asyncpg
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libgomp1 \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# implicit's ALS (OpenBLAS-backed) warns hard about its own internal
+# threadpool fighting torch's when both are loaded in one process, and can
+# genuinely deadlock/slow down on a small instance if left alone.
+ENV OPENBLAS_NUM_THREADS=1
+ENV OMP_NUM_THREADS=1
+
+# Install Python deps first (layer caching — only reruns if requirements change).
+# requirements-worker.txt adds implicit/sentence-transformers/torch-cpu/pyarrow
+# on top of the same base deps the web service uses — see that file for why
+# it's split out instead of folded into requirements.txt.
+COPY requirements.txt requirements-worker.txt ./
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-worker.txt
+
+# Copy application code
+COPY app/ ./app/
+
+# Create the data dir — ML artifacts are mounted via Docker volume in local dev
+# and are COPY'd in below for production builds where artifacts exist. The
+# worker writes back into this same tree (retrained FAISS index, new ALS
+# factors), so unlike the web service's Dockerfile this needs to be a
+# persistent disk in production, not just a build-time copy — see
+# RENDER_WORKER_SETUP.md for attaching a Render Persistent Disk at /app/data.
+RUN mkdir -p ./data/processed/models
+COPY data/ ./data/
+
+# Non-root user for security
+RUN useradd -m appuser && chown -R appuser:appuser /app
+USER appuser
+
+# No EXPOSE — this is a worker, it serves no HTTP traffic.
+
+# -B runs Celery's beat scheduler inside the same process as the worker.
+# Fine for a single-instance deployment (this app's scale); if this is ever
+# scaled to >1 worker instance, split beat into its own service so the
+# schedule doesn't fire once per worker replica.
+CMD ["celery", "-A", "app.tasks.celery_tasks.celery_app", "worker", "-B", "--loglevel=info", "--concurrency=1"]

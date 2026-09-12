@@ -53,7 +53,13 @@ def rebuild_interaction_matrix():
     logger.info("Starting nightly interaction matrix rebuild...")
 
     async def _fetch_events():
+        from datetime import datetime, timedelta, timezone
         from app.db.database import AsyncSessionLocal
+        # Bind the cutoff as a parameter instead of using Postgres's
+        # `NOW() - INTERVAL '90 days'` — that syntax doesn't exist on SQLite,
+        # which is what the test suite runs against (see conftest.py); a bound
+        # datetime compares correctly on both dialects.
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=90)
         async with AsyncSessionLocal() as db:
             result = await db.execute(
                 text("""
@@ -65,9 +71,10 @@ def rebuild_interaction_matrix():
                     FROM user_events
                     WHERE event_type IN ('view', 'click', 'add_to_cart', 'purchase')
                       AND product_id IS NOT NULL
-                      AND created_at > NOW() - INTERVAL '90 days'
+                      AND created_at > :cutoff
                     GROUP BY user_id, product_id
-                """)
+                """),
+                {"cutoff": cutoff},
             )
             return result.fetchall()
 
@@ -155,11 +162,14 @@ def refresh_product_embeddings():
         from app.db.database import AsyncSessionLocal
         from app.models.db_models import Product
         from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
 
         async with AsyncSessionLocal() as db:
             existing_ids = np.load(MODELS_DIR / "faiss_product_ids.npy").tolist()
             result = await db.execute(
-                select(Product).where(
+                select(Product)
+                .options(selectinload(Product.department_rel))
+                .where(
                     Product.is_available == True,
                     Product.id.not_in(existing_ids)
                 )
@@ -176,7 +186,7 @@ def refresh_product_embeddings():
         model = SentenceTransformer("all-MiniLM-L6-v2")
 
         texts = [
-            f"{p.name} {getattr(p, 'department', '')}".lower()
+            f"{p.name} {p.department_rel.name if p.department_rel else ''}".lower()
             for p in new_products
         ]
         new_embeddings = model.encode(texts, normalize_embeddings=True).astype("float32")
@@ -216,16 +226,21 @@ def flush_stale_cache():
     import asyncio
 
     async def _flush():
+        from datetime import datetime, timedelta, timezone
         from app.db.database import AsyncSessionLocal, get_redis
         from sqlalchemy import text
 
+        # Same portability note as rebuild_interaction_matrix._fetch_events:
+        # bind the cutoff instead of `NOW() - INTERVAL` (Postgres-only syntax).
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=15)
         async with AsyncSessionLocal() as db:
             result = await db.execute(
                 text("""
                     SELECT DISTINCT user_id FROM user_events
                     WHERE event_type = 'purchase'
-                      AND created_at > NOW() - INTERVAL '15 minutes'
-                """)
+                      AND created_at > :cutoff
+                """),
+                {"cutoff": cutoff},
             )
             user_ids = [row[0] for row in result.fetchall()]
 

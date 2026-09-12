@@ -9,10 +9,18 @@ env/
 
 # Build outputs
 frontend/dist/
-backend/data/processed/models/*.bin
-backend/data/processed/models/*.pkl
-backend/data/processed/models/*.npy
-backend/data/processed/models/*.npz
+
+# NOTE: backend/data/processed/models/*.{bin,pkl,npy,npz} used to be excluded
+# here on a blanket "don't commit binary ML artifacts" rule. That meant the
+# trained FAISS index / embeddings / TF-IDF / CF factors never reached
+# GitHub, so the deployed backend always ran with cf_engine/cbf_engine
+# "degraded" (see /health) — not a ranking bug, just missing files. They're
+# ~20MB total and there's no retraining pipeline wired into deployment (see
+# backend/app/tasks/celery_tasks.py), so shipping the already-trained
+# artifacts in git is the pragmatic choice: verified 2026-09-12 that they
+# still match the live product catalogue (ids 0-5059, 5060 rows) and load
+# cleanly. If a real training pipeline is added later, re-exclude these and
+# have that pipeline publish artifacts to deployment instead.
 
 # NEVER commit secrets
 .env
