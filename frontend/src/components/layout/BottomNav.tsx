@@ -5,7 +5,7 @@ const NAV = [
   { path: "/home",     icon: "🏠", label: "Home"       },
   { path: "/category", icon: "🗂️", label: "Categories"  },
   { path: "/cart",     icon: "🛒", label: "Cart",  badge: true },
-  { path: "/ai",       icon: "✨", label: "AI"          },
+  { path: "/cook",     icon: "👩‍🍳", label: "Cook"        },
   { path: "/profile",  icon: "👤", label: "Profile"     },
 ];
 

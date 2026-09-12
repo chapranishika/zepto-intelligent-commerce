@@ -5,6 +5,9 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ProductCard from "../components/ui/ProductCard";
 import RecommendationRail from "../components/ui/RecommendationRail";
+import GopiBahuHero from "../components/ui/GopiBahuHero";
+import RecipeCard from "../components/ui/RecipeCard";
+import { getAllRecipes } from "../lib/recipes";
 import {
   PRODUCTS, CATEGORIES, TRENDING_IDS, FOR_YOU_IDS,
   FRESH_IDS, KITCHEN_HH_IDS, getById,
@@ -13,7 +16,6 @@ import { useCartStore, useUIStore } from "../store";
 import { useTrending, useRecommendations } from "../hooks";
 
 const HERO  = "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=900&q=80";
-const GOPI  = "/gopi_assistant.png";
 const PROMOS = [
   { img: "https://images.unsplash.com/photo-1610348725531-843dff563e2c?auto=format&fit=crop&w=500&q=80", grad: "linear-gradient(to top,rgba(128,37,251,.85),rgba(128,37,251,.2))",  tag: "Free delivery", title: "First 3 orders free — FIRST3" },
   { img: "https://images.unsplash.com/photo-1465014925804-7b9ede58d0d7?auto=format&fit=crop&w=500&q=80", grad: "linear-gradient(to top,rgba(0,168,107,.85),rgba(0,168,107,.2))",   tag: "Farm fresh",    title: "Vegetables direct from farm" },
@@ -140,19 +142,21 @@ export default function HomePage() {
           onSeeAll={() => navigate("/category")}
         />
 
-        {/* ── Gopi Bahu AI banner ── */}
-        <div className="ai-banner" onClick={() => navigate("/ai")}>
-          <div className="ai-avatar-img">
-            <img src={GOPI} alt="Gopi Bahu"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+        {/* ── Gopi Bahu / Cook with Zepto ── */}
+        <GopiBahuHero />
+
+        {/* ── Discover recipes, shop ingredients ── */}
+        <section className="home-recipes-section">
+          <div className="rail-header">
+            <h2 className="rail-title">Discover recipes, shop ingredients.</h2>
+            <button className="rail-see-all" onClick={() => navigate("/cook")}>See all</button>
           </div>
-          <div className="ai-text">
-            <div className="ai-label">✨ AI POWERED</div>
-            <h3>Hi, I'm Gopi Bahu!</h3>
-            <p>Ask me for recipes, returns, or grocery help.</p>
+          <div className="home-recipe-scroll">
+            {getAllRecipes().map((r) => (
+              <RecipeCard key={r.id} recipe={r} />
+            ))}
           </div>
-          <span className="ai-arrow">›</span>
-        </div>
+        </section>
 
         {/* ── For You — real CF/hybrid ranker recommendations when reachable ── */}
         <RecommendationRail

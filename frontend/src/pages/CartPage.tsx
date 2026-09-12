@@ -1,11 +1,65 @@
 import { useNavigate } from "react-router-dom";
 import { useCartStore } from "../store";
 import RecommendationRail from "../components/ui/RecommendationRail";
-import { TRENDING_IDS, getById } from "../lib/products";
+import { TRENDING_IDS, getById, type Product } from "../lib/products";
+
+function CartItemRow({
+  product: p, quantity, updateQty, removeItem,
+}: {
+  product: Product;
+  quantity: number;
+  updateQty: (id: number, qty: number) => void;
+  removeItem: (id: number) => void;
+}) {
+  return (
+    <div className="cart-item">
+      <div className="ci-img">
+        <img src={p.src} alt={p.name} loading="lazy"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+      </div>
+      <div className="ci-info">
+        <p className="ci-name">{p.name}</p>
+        <p className="ci-unit">{p.unit}</p>
+        <div className="ci-prices">
+          <span className="ci-price">₹{p.disc}</span>
+          {p.price > p.disc && <span className="ci-mrp">₹{p.price}</span>}
+        </div>
+      </div>
+      <div className="ci-controls">
+        <div className="qty-ctrl">
+          <button onClick={() => updateQty(p.id, quantity - 1)}>−</button>
+          <span>{quantity}</span>
+          <button onClick={() => updateQty(p.id, quantity + 1)}>+</button>
+        </div>
+        <p className="ci-total">₹{p.disc * quantity}</p>
+        <button className="ci-remove" onClick={() => removeItem(p.id)}>✕</button>
+      </div>
+    </div>
+  );
+}
 
 export default function CartPage() {
   const navigate   = useNavigate();
   const { items, updateQty, removeItem, clearCart, totalPrice, totalMRP, totalDiscount } = useCartStore();
+
+  // Group cart entries by the recipe they were added for (Gopi Bahu / Cook)
+  // — display-only grouping, every entry is still one normal cart item.
+  const recipeGroups: [string, { title: string; entries: typeof items }][] = [];
+  const groupIndex = new Map<string, number>();
+  const ungrouped: typeof items = [];
+  for (const entry of items) {
+    if (entry.recipeId && entry.recipeTitle) {
+      let idx = groupIndex.get(entry.recipeId);
+      if (idx === undefined) {
+        idx = recipeGroups.length;
+        groupIndex.set(entry.recipeId, idx);
+        recipeGroups.push([entry.recipeId, { title: entry.recipeTitle, entries: [] }]);
+      }
+      recipeGroups[idx][1].entries.push(entry);
+    } else {
+      ungrouped.push(entry);
+    }
+  }
 
   const sub   = totalPrice();
   const mrp   = totalMRP();
@@ -56,7 +110,7 @@ export default function CartPage() {
     <div className="page cart-page">
       <header className="page-header">
         <button className="back-btn" onClick={() => navigate(-1)}>‹</button>
-        <h1>My Cart</h1>
+        <h1>Your Cart ({items.length} item{items.length === 1 ? "" : "s"})</h1>
         <button className="clear-cart-btn" onClick={clearCart}>Clear</button>
       </header>
 
@@ -68,32 +122,24 @@ export default function CartPage() {
 
       <div className="cart-content">
 
-        {/* Cart items with real Zepto CDN images */}
+        {/* Cart items with real Zepto CDN images — grouped by recipe where
+            applicable (Gopi Bahu / Cook), everything else ungrouped below.
+            These are all still completely normal cart entries: same
+            updateQty/removeItem, same store, no separate cart. */}
         <div className="cart-items">
-          {items.map(({ product: p, quantity }) => (
-            <div key={p.id} className="cart-item">
-              <div className="ci-img">
-                <img src={p.src} alt={p.name} loading="lazy"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          {recipeGroups.map(([recipeId, group]) => (
+            <div key={recipeId} className="cart-recipe-group">
+              <div className="cart-recipe-group-header">
+                <span>🍳 {group.title}</span>
+                <span className="cart-recipe-group-sub">Recipe ingredients</span>
               </div>
-              <div className="ci-info">
-                <p className="ci-name">{p.name}</p>
-                <p className="ci-unit">{p.unit}</p>
-                <div className="ci-prices">
-                  <span className="ci-price">₹{p.disc}</span>
-                  {p.price > p.disc && <span className="ci-mrp">₹{p.price}</span>}
-                </div>
-              </div>
-              <div className="ci-controls">
-                <div className="qty-ctrl">
-                  <button onClick={() => updateQty(p.id, quantity - 1)}>−</button>
-                  <span>{quantity}</span>
-                  <button onClick={() => updateQty(p.id, quantity + 1)}>+</button>
-                </div>
-                <p className="ci-total">₹{p.disc * quantity}</p>
-                <button className="ci-remove" onClick={() => removeItem(p.id)}>✕</button>
-              </div>
+              {group.entries.map(({ product: p, quantity }) => (
+                <CartItemRow key={p.id} product={p} quantity={quantity} updateQty={updateQty} removeItem={removeItem} />
+              ))}
             </div>
+          ))}
+          {ungrouped.map(({ product: p, quantity }) => (
+            <CartItemRow key={p.id} product={p} quantity={quantity} updateQty={updateQty} removeItem={removeItem} />
           ))}
         </div>
 
