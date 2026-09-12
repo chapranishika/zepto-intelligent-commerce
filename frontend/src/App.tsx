@@ -6,6 +6,7 @@ import HomePage          from "./pages/HomePage";
 import CategoryPage      from "./pages/CategoryPage";
 import ProductPage       from "./pages/ProductPage";
 import CartPage          from "./pages/CartPage";
+import WishlistPage      from "./pages/WishlistPage";
 import CheckoutPage      from "./pages/CheckoutPage";
 import OrderSuccessPage  from "./pages/OrderSuccessPage";
 import OrderTrackingPage from "./pages/OrderTrackingPage";
@@ -77,6 +78,7 @@ export default function App() {
             <Route path="/category"      element={<CategoryPage />}      />
             <Route path="/product/:id"   element={<ProductPage />}       />
             <Route path="/cart"          element={<CartPage />}          />
+            <Route path="/wishlist"      element={<WishlistPage />}      />
             <Route path="/checkout"      element={<CheckoutPage />}      />
             <Route path="/success"       element={<OrderSuccessPage />}  />
             <Route path="/track"         element={<OrderTrackingPage />} />

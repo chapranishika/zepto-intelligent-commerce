@@ -9,15 +9,15 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import RecipeCard from "../../components/ui/RecipeCard";
-import { ALL_RECIPE_TAGS, searchRecipes, type Recipe } from "../../lib/recipes";
+import RecipeSearch, { type CookTab } from "../../components/cook/RecipeSearch";
+import { searchRecipes, type Recipe } from "../../lib/recipes";
 
 const GOPI = "/gopi_assistant.png";
-type Tab = "all" | "recipes" | "products" | "categories";
 
 export default function CookPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
-  const [tab, setTab] = useState<Tab>("all");
+  const [tab, setTab] = useState<CookTab>("all");
   const [activeTags, setActiveTags] = useState<string[]>([]);
 
   const recipes: Recipe[] = useMemo(() => {
@@ -34,7 +34,7 @@ export default function CookPage() {
     );
   }
 
-  function handleTabClick(next: Tab) {
+  function handleTabChange(next: CookTab) {
     setTab(next);
     if (next === "products") navigate(`/search${query ? `?q=${encodeURIComponent(query)}` : ""}`);
     if (next === "categories") navigate("/category");
@@ -59,56 +59,15 @@ export default function CookPage() {
       </header>
 
       <div className="cook-content">
-        {/* ── Search ── */}
-        <div className="cook-search-wrap">
-          <div className="cook-search-bar">
-            <span>🔍</span>
-            <input
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search dishes, cuisines, or ingredients"
-            />
-            {query && (
-              <button className="cook-search-clear" onClick={() => setQuery("")}>✕</button>
-            )}
-          </div>
-          <div className="cook-search-examples">
-            {["Paneer Butter Masala", "Dal Tadka", "Aloo Paratha", "Vegetable Biryani", "Chole"].map((ex) => (
-              <button key={ex} className="cook-example-chip" onClick={() => setQuery(ex)}>
-                {ex}
-              </button>
-            ))}
-          </div>
-        </div>
+        <RecipeSearch
+          query={query}
+          onQueryChange={setQuery}
+          tab={tab}
+          onTabChange={handleTabChange}
+          activeTags={activeTags}
+          onToggleTag={toggleTag}
+        />
 
-        {/* ── Tabs ── */}
-        <div className="cook-tabs">
-          {(["all", "recipes", "products", "categories"] as Tab[]).map((t) => (
-            <button
-              key={t}
-              className={`cook-tab${tab === t ? " active" : ""}`}
-              onClick={() => handleTabClick(t)}
-            >
-              {t === "all" ? "All" : t === "recipes" ? "Recipes" : t === "products" ? "Products" : "Categories"}
-            </button>
-          ))}
-        </div>
-
-        {/* ── Filters ── */}
-        <div className="cook-filters">
-          {ALL_RECIPE_TAGS.map((tag) => (
-            <button
-              key={tag}
-              className={`cook-filter-chip${activeTags.includes(tag) ? " active" : ""}`}
-              onClick={() => toggleTag(tag)}
-            >
-              {tag}
-            </button>
-          ))}
-        </div>
-
-        {/* ── Recipe list ── */}
         <div className="cook-recipes-header">
           <h2>Recipes ({recipes.length})</h2>
           {(activeTags.length > 0 || query) && (
