@@ -1537,6 +1537,36 @@ a      { text-decoration: none; color: inherit; }
   .checkout-bar, .ing-sticky-cta, .rd-sticky-cta {
     bottom: 0; max-width: 1400px; left: 50%; transform: translateX(-50%);
   }
+
+  /* Product rails (Trending, For You, Fresh picks, Kitchen & Household,
+     cart upsell, wishlist "you might like"...): on mobile this is a
+     horizontal scroll strip, which is the right call at 360-768px. On a
+     1400px-wide desktop shell that same fixed-width strip just runs off
+     the right edge with the last card sliced in half and no scroll
+     affordance (no arrows, no snap, no fade) — it reads as broken, not
+     "scroll for more". Wrapping it into a grid removes the need to
+     scroll at all for these ~10-item curated rails. */
+  .rail-scroll {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    justify-content: flex-start;
+  }
+  .rail-item { flex-shrink: 1; }
+
+  /* Same fix, same reason, for the homepage recipe discovery rail. */
+  .home-recipe-scroll {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  /* Pill/chip scrollers — small enough that this wasn't visibly broken at
+     1400px with today's item counts, but it's the same fixed-width-in-a-
+     scroll-strip pattern, so it gets the same treatment rather than
+     waiting to break the moment one more category/promo/tab is added. */
+  .cat-scroll, .promo-scroll, .mp-tabs {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
 }
 
 @media (min-width: 1200px) {
