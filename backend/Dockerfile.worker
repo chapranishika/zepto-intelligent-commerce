@@ -14,13 +14,21 @@ WORKDIR /app
 # genuinely deadlock/slow down on a small instance if left alone.
 ENV OPENBLAS_NUM_THREADS=1
 ENV OMP_NUM_THREADS=1
+# Same fixed cache path as the web service's Dockerfile — refresh_product_embeddings
+# also loads all-MiniLM-L6-v2, and this worker should never need network
+# access to huggingface.co at runtime either.
+ENV HF_HOME=/app/.cache/huggingface
 
 # Install Python deps first (layer caching — only reruns if requirements change).
-# requirements-worker.txt adds implicit/sentence-transformers/torch-cpu/pyarrow
-# on top of the same base deps the web service uses — see that file for why
-# it's split out instead of folded into requirements.txt.
+# requirements-worker.txt adds implicit + pyarrow on top of the same base
+# deps the web service uses (which now include sentence-transformers/torch
+# themselves — see requirements.txt's comment for why) — see that file for
+# what's genuinely worker-only.
 COPY requirements.txt requirements-worker.txt ./
 RUN pip install --no-cache-dir -r requirements.txt -r requirements-worker.txt
+
+# See the web service's Dockerfile for why this is baked in at build time.
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
 
 # Copy application code
 COPY app/ ./app/

@@ -5,6 +5,7 @@ FAISS ANN search + TF-IDF for similar products and semantic search.
 import numpy as np
 import pickle
 import logging
+import threading
 from pathlib import Path
 from typing import List, Optional
 
@@ -22,6 +23,9 @@ class ContentBasedEngine:
         self.dept_centroids: dict = {}
         self._id_to_idx: dict = {}     # product_id -> row index, built once in load()
         self._st_model = None          # lazy-loaded sentence transformer
+        self._st_model_lock = threading.Lock()  # search_by_text runs in a thread pool
+        # (asyncio.to_thread, see routes.py) — concurrent first requests could
+        # otherwise race to construct/download the model twice.
         self.loaded = False
 
     def load(self):
@@ -119,8 +123,10 @@ class ContentBasedEngine:
     def _embed_query(self, query: str) -> np.ndarray:
         """Embed a text query using sentence-transformers (lazy load)."""
         if self._st_model is None:
-            from sentence_transformers import SentenceTransformer
-            self._st_model = SentenceTransformer("all-MiniLM-L6-v2")
+            with self._st_model_lock:
+                if self._st_model is None:  # re-check: lost the race while waiting for the lock
+                    from sentence_transformers import SentenceTransformer
+                    self._st_model = SentenceTransformer("all-MiniLM-L6-v2")
         emb = self._st_model.encode(
             [query.lower()], normalize_embeddings=True
         ).astype(np.float32)
