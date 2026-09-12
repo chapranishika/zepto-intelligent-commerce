@@ -15,11 +15,21 @@ import { signOut } from "../lib/supabase";
 interface CartEntry {
   product: Product;
   quantity: number;
+  // Set when this item was added via the Cook flow (Gopi Bahu) — purely
+  // display metadata for grouping in the cart ("Added for Paneer Butter
+  // Masala"); the item is a completely normal cart entry otherwise, so
+  // every existing cart operation (qty, remove, checkout) works unchanged.
+  recipeId?: string;
+  recipeTitle?: string;
 }
 
 interface CartStore {
   items: CartEntry[];
-  addItem: (product: Product, qty?: number) => void;
+  addItem: (product: Product, qty?: number, recipe?: { id: string; title: string }) => void;
+  addRecipeIngredients: (
+    entries: { product: Product; qty: number }[],
+    recipe: { id: string; title: string }
+  ) => void;
   removeItem: (productId: number) => void;
   updateQty: (productId: number, qty: number) => void;
   clearCart: () => void;
@@ -35,19 +45,52 @@ export const useCartStore = create<CartStore>()(
     (set, get) => ({
       items: [],
 
-      addItem: (product, qty = 1) =>
+      addItem: (product, qty = 1, recipe) =>
         set((s) => {
           const ex = s.items.find((e) => e.product.id === product.id);
           if (ex) {
             return {
               items: s.items.map((e) =>
                 e.product.id === product.id
-                  ? { ...e, quantity: e.quantity + qty }
+                  ? {
+                      ...e,
+                      quantity: e.quantity + qty,
+                      ...(recipe ? { recipeId: recipe.id, recipeTitle: recipe.title } : {}),
+                    }
                   : e
               ),
             };
           }
-          return { items: [...s.items, { product, quantity: qty }] };
+          return {
+            items: [
+              ...s.items,
+              {
+                product,
+                quantity: qty,
+                ...(recipe ? { recipeId: recipe.id, recipeTitle: recipe.title } : {}),
+              },
+            ],
+          };
+        }),
+
+      // Adds/merges a batch of recipe ingredients as ONE state update instead
+      // of N separate addItem calls — same de-duplication behaviour (an
+      // ingredient already in the cart has its quantity bumped, not
+      // duplicated), used by the Cook "Add N ingredients to cart" action.
+      addRecipeIngredients: (entries, recipe) =>
+        set((s) => {
+          let items = s.items;
+          for (const { product, qty } of entries) {
+            const ex = items.find((e) => e.product.id === product.id);
+            items = ex
+              ? items.map((e) =>
+                  e.product.id === product.id
+                    ? { ...e, quantity: e.quantity + qty, recipeId: recipe.id, recipeTitle: recipe.title }
+                    : e
+                )
+              : [...items, { product, quantity: qty, recipeId: recipe.id, recipeTitle: recipe.title }];
+          }
+          return { items };
         }),
 
       removeItem: (id) =>
@@ -123,6 +166,42 @@ export const useWishlistStore = create<WishlistStore>()(
       merge: (persisted: unknown, current) => ({
         ...current,
         ids: new Set<number>(((persisted as any).ids ?? []) as number[]),
+      }),
+    }
+  )
+);
+
+// ── Saved recipes (Gopi Bahu / Cook) ───────────────────────────────────────────
+// Same shape as the product wishlist above, but keyed by recipe slug
+// (string) instead of product id (number) — recipes aren't products, so
+// they get their own small store rather than overloading useWishlistStore.
+
+interface SavedRecipesStore {
+  ids: Set<string>;
+  toggle: (id: string) => void;
+  has: (id: string) => boolean;
+}
+
+export const useSavedRecipesStore = create<SavedRecipesStore>()(
+  persist(
+    (set, get) => ({
+      ids: new Set<string>(),
+      toggle: (id) =>
+        set((s) => {
+          const next = new Set(s.ids);
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return { ids: next };
+        }),
+      has: (id) => get().ids.has(id),
+    }),
+    {
+      name: "zepto-saved-recipes",
+      storage: createJSONStorage(() => localStorage),
+      partialize: (s) => ({ ids: [...s.ids] }),
+      merge: (persisted: unknown, current) => ({
+        ...current,
+        ids: new Set<string>(((persisted as any).ids ?? []) as string[]),
       }),
     }
   )

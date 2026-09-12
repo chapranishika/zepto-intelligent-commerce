@@ -12,6 +12,11 @@ import AIPage            from "./pages/AIPage";
 import SearchPage        from "./pages/SearchPage";
 import ProfilePage       from "./pages/ProfilePage";
 import LoginPage         from "./pages/LoginPage";
+import CookPage              from "./pages/cook/CookPage";
+import RecipeDetailPage      from "./pages/cook/RecipeDetailPage";
+import RecipeIngredientsPage from "./pages/cook/RecipeIngredientsPage";
+import MealPlannerPage       from "./pages/cook/MealPlannerPage";
+import FromIngredientsPage   from "./pages/cook/FromIngredientsPage";
 import { useUIStore, useUserStore } from "./store";
 import { getSession, onAuthChange } from "./lib/supabase";
 import "./styles.css";
@@ -77,6 +82,13 @@ export default function App() {
             <Route path="/search"        element={<SearchPage />}        />
             <Route path="/profile"       element={<ProfilePage />}       />
             <Route path="/login"         element={<LoginPage />}         />
+
+            {/* Gopi Bahu / Cook with Zepto */}
+            <Route path="/cook"                              element={<CookPage />}              />
+            <Route path="/cook/meal-planner"                 element={<MealPlannerPage />}       />
+            <Route path="/cook/from-ingredients"              element={<FromIngredientsPage />}   />
+            <Route path="/cook/recipe/:id"                    element={<RecipeDetailPage />}      />
+            <Route path="/cook/recipe/:id/ingredients"        element={<RecipeIngredientsPage />} />
           </Routes>
         </div>
         <BottomNav />
