@@ -9,6 +9,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# BLAS/OpenMP libraries (numpy, faiss, torch) default to spawning one thread
+# per host CPU core, not per this container's actual cgroup share — on a
+# 0.1-0.2 CPU instance those threads buy nothing but each still costs a
+# thread stack's worth of memory. Capping this is a small, free reduction
+# in the same OOM-crash risk margin --workers 1 (below) is mainly fixing.
+ENV OMP_NUM_THREADS=1
+ENV OPENBLAS_NUM_THREADS=1
+
 # Fixed cache path (not the default user-home one) so the model this image
 # downloads below, as root, is still where appuser finds it at runtime after
 # the chown near the bottom of this file.
@@ -47,5 +55,15 @@ USER appuser
 
 EXPOSE 8000
 
-# Production: 2 workers. For local dev, docker-compose overrides this with --reload
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# 1 worker, not 2: each worker process loads its own full copy of the ML
+# stack (FAISS, LightGBM, and — since sentence-transformers/torch joined
+# requirements.txt for real-time search embedding — a copy of that model
+# too). On Render's free tier (512MB RAM), 2 workers meant paying that
+# whole memory cost twice for no real throughput benefit (the free tier is
+# 0.1 CPU — there's no spare core for a second worker to actually use), and
+# it OOM-crashed the first time a real /search request ran. 1 worker halves
+# the ML memory footprint; CPU-bound work inside it already runs off the
+# event loop via asyncio.to_thread (see routes.py), so this doesn't reintroduce
+# the blocking-event-loop bug for concurrent requests within that one process.
+# Bump this back up only alongside a bigger instance (2GB+ RAM).
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
